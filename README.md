@@ -24,6 +24,63 @@ A FastMCP server for interacting with Anki through the Model Context Protocol (M
    python server.py
    ```
 
+## Claude Desktop Integration
+
+To use this MCP server with Claude Desktop, add the following configuration to your `claude_desktop_config.json` file:
+
+### Configuration Location
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Configuration Example
+```json
+{
+  "mcpServers": {
+    "anki-mcp": {
+      "command": "python",
+      "args": ["/path/to/your/anki-mcp/server.py"],
+      "env": {
+        "OPENAI_API_KEY": "your-openai-api-key-here"
+      }
+    }
+  }
+}
+```
+
+### Setup Steps
+1. **Ensure dependencies are installed**: Make sure you've run `pip install -r requirements.txt` in your anki-mcp directory
+2. **Find your config file** at the location above (create it if it doesn't exist)
+3. **Update the path**: Replace `/path/to/your/anki-mcp/server.py` with the actual path to your server.py file
+4. **Add your API key**: Replace `your-openai-api-key-here` with your actual OpenAI API key
+5. **Restart Claude Desktop** for the changes to take effect
+
+### Important Notes
+- Make sure **Anki is running** with the AnkiConnect add-on before using the tools
+- The `python` command should point to the Python environment where you installed the dependencies
+- If using a virtual environment, you may need to use the full path to the Python executable (e.g., `/path/to/venv/bin/python`)
+
+### Alternative: Using Environment Variables
+If you prefer to keep your API key in your shell environment, you can omit the `env` section:
+
+```json
+{
+  "mcpServers": {
+    "anki-mcp": {
+      "command": "python",
+      "args": ["/path/to/your/anki-mcp/server.py"]
+    }
+  }
+}
+```
+
+Then set the environment variable in your shell:
+```bash
+export OPENAI_API_KEY='your-openai-api-key-here'
+```
+
+### Verification
+Once configured, restart Claude Desktop and you should see the Anki MCP tools available in your conversations. You can verify by asking Claude to list your Anki decks or try any of the available tools.
+
 ## Available Tools
 
 ### `list_decks`
