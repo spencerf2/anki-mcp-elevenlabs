@@ -1,7 +1,11 @@
 from fastmcp import FastMCP
 import requests
 import random
-from typing import Annotated
+import base64
+import os
+import tempfile
+import numpy as np
+from typing import Annotated, List, Tuple
 from pydantic import Field
 
 mcp_server = FastMCP("anki-mcp")
@@ -419,6 +423,282 @@ async def list_note_types() -> str:
         output.append("")
 
     return "\n".join(output)
+
+def _get_text_embedding(text: str, api_key: str) -> List[float]:
+    """Get text embedding using OpenAI's embedding API."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": "text-embedding-3-small",  # Cheaper and faster than ada-002
+        "input": text
+    }
+    
+    response = requests.post(
+        "https://api.openai.com/v1/embeddings",
+        headers=headers,
+        json=data
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
+    
+    result = response.json()
+    return result["data"][0]["embedding"]
+
+def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    """Calculate cosine similarity between two vectors."""
+    vec1 = np.array(vec1)
+    vec2 = np.array(vec2)
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+@mcp_server.tool()
+async def generate_audio(
+    text: Annotated[str, Field(description="Text to convert to speech")],
+    language: Annotated[str, Field(description="Language code (e.g., 'zh-CN' for Chinese, 'en-US' for English)")] = "zh-CN",
+    voice: Annotated[str, Field(description="Voice to use (alloy, echo, fable, onyx, nova, shimmer)")] = "alloy"
+) -> dict:
+    """Generate audio file from text using OpenAI's text-to-speech API and return base64 encoded audio data."""
+    
+    # Get API key from environment variable
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "error": "OpenAI API key not found. Please set OPENAI_API_KEY environment variable.",
+            "success": False,
+            "setup_instructions": "Run: export OPENAI_API_KEY='your-api-key-here' or add it to your .env file"
+        }
+    
+    try:
+        # OpenAI TTS API call
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": "tts-1",  # or "tts-1-hd" for higher quality
+            "input": text,
+            "voice": voice
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code != 200:
+            return {
+                "error": f"OpenAI API error: {response.status_code} - {response.text}",
+                "success": False
+            }
+        
+        # Encode audio as base64
+        audio_base64 = base64.b64encode(response.content).decode('utf-8')
+        
+        return {
+            "success": True,
+            "audio_base64": audio_base64,
+            "format": "mp3",
+            "language": language,
+            "voice": voice,
+            "text": text,
+            "model": "tts-1"
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to generate audio: {str(e)}",
+            "success": False
+        }
+
+@mcp_server.tool()
+async def create_notes_bulk(
+    deck_name: Annotated[str, Field(description="Name of the Anki deck to add notes to")],
+    notes_list: Annotated[list, Field(description="List of note dictionaries, each containing 'model_name', 'fields', and optionally 'tags'")]
+) -> dict:
+    """Create multiple notes in a single batch operation for efficiency."""
+    if not notes_list:
+        return {"error": "No notes provided", "success": False}
+    
+    # Prepare notes for Anki
+    anki_notes = []
+    for i, note_data in enumerate(notes_list):
+        if not isinstance(note_data, dict):
+            return {"error": f"Note {i+1} is not a dictionary", "success": False}
+        
+        if "model_name" not in note_data or "fields" not in note_data:
+            return {"error": f"Note {i+1} missing required 'model_name' or 'fields'", "success": False}
+        
+        anki_note = {
+            "deckName": deck_name,
+            "modelName": note_data["model_name"],
+            "fields": note_data["fields"],
+            "tags": note_data.get("tags", [])
+        }
+        anki_notes.append(anki_note)
+    
+    # Use Anki's addNotes action for bulk creation
+    response = requests.post(ANKI_CONNECT_URL, json={
+        "action": "addNotes",
+        "version": 6,
+        "params": {
+            "notes": anki_notes
+        }
+    })
+    
+    if response.status_code != 200:
+        return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+    
+    result = response.json()
+    if result.get("error"):
+        return {"error": result["error"], "success": False}
+    
+    note_ids = result["result"]
+    successful_notes = [note_id for note_id in note_ids if note_id is not None]
+    failed_count = len([note_id for note_id in note_ids if note_id is None])
+    
+    return {
+        "success": True,
+        "total_attempted": len(notes_list),
+        "successful_count": len(successful_notes),
+        "failed_count": failed_count,
+        "note_ids": note_ids,
+        "message": f"Successfully created {len(successful_notes)} out of {len(notes_list)} notes"
+    }
+
+@mcp_server.tool()
+async def find_similar_notes(
+    deck_name: Annotated[str, Field(description="Name of the Anki deck to search in")],
+    search_text: Annotated[str, Field(description="Text to search for (e.g., hanzi, word, or phrase)")],
+    similarity_threshold: Annotated[float, Field(description="Minimum similarity score (0.0-1.0, default 0.7)", ge=0.0, le=1.0)] = 0.7,
+    max_results: Annotated[int, Field(description="Maximum number of similar notes to return", ge=1, le=50)] = 10
+) -> dict:
+    """Find notes with similar semantic content using vector embeddings, works well with Chinese text."""
+    
+    # Get API key for embeddings
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "error": "OpenAI API key not found. Please set OPENAI_API_KEY environment variable.",
+            "success": False,
+            "setup_instructions": "Run: export OPENAI_API_KEY='your-api-key-here' or add it to your .env file"
+        }
+    
+    try:
+        # Get all notes from the deck first
+        response = requests.post(ANKI_CONNECT_URL, json={
+            "action": "findNotes",
+            "version": 6,
+            "params": {
+                "query": f"deck:\"{deck_name}\""
+            }
+        })
+        
+        if response.status_code != 200:
+            return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+        
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+        
+        note_ids = result["result"]
+        if not note_ids:
+            return {"error": f"No notes found in deck '{deck_name}'", "success": False}
+        
+        # Get detailed info for all notes
+        response = requests.post(ANKI_CONNECT_URL, json={
+            "action": "notesInfo",
+            "version": 6,
+            "params": {
+                "notes": note_ids
+            }
+        })
+        
+        if response.status_code != 200:
+            return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+        
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+        
+        notes = result["result"]
+        
+        # Get embedding for search text
+        search_embedding = _get_text_embedding(search_text, api_key)
+        
+        # Calculate similarities
+        similarities = []
+        for note in notes:
+            # Combine all field values for embedding comparison
+            combined_text = " ".join([
+                field_data["value"] for field_data in note["fields"].values() 
+                if field_data["value"].strip()
+            ])
+            
+            if not combined_text.strip():
+                continue
+                
+            try:
+                note_embedding = _get_text_embedding(combined_text, api_key)
+                similarity = _cosine_similarity(search_embedding, note_embedding)
+                
+                if similarity >= similarity_threshold:
+                    similarities.append({
+                        "note": note,
+                        "similarity": similarity,
+                        "combined_text": combined_text
+                    })
+            except Exception as e:
+                # Skip notes that fail embedding generation
+                continue
+        
+        # Sort by similarity (highest first) and limit results
+        similarities.sort(key=lambda x: x["similarity"], reverse=True)
+        similarities = similarities[:max_results]
+        
+        if not similarities:
+            return {
+                "success": True,
+                "found_count": 0,
+                "message": f"No notes found with similarity >= {similarity_threshold} to '{search_text}' in deck '{deck_name}'",
+                "notes": []
+            }
+        
+        # Format results
+        formatted_notes = []
+        for item in similarities:
+            note = item["note"]
+            formatted_note = {
+                "note_id": note["noteId"],
+                "model_name": note["modelName"],
+                "tags": note["tags"],
+                "similarity_score": round(item["similarity"], 4),
+                "fields": {}
+            }
+            
+            for field_name, field_data in note["fields"].items():
+                formatted_note["fields"][field_name] = field_data["value"]
+            
+            formatted_notes.append(formatted_note)
+        
+        return {
+            "success": True,
+            "search_text": search_text,
+            "found_count": len(similarities),
+            "similarity_threshold": similarity_threshold,
+            "deck_name": deck_name,
+            "notes": formatted_notes
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to find similar notes: {str(e)}",
+            "success": False
+        }
 
 if __name__ == "__main__":
     mcp_server.run()
