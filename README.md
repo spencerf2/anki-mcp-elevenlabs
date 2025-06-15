@@ -14,7 +14,12 @@ A FastMCP server for interacting with Anki through the Model Context Protocol (M
    - Enter code: `2055492159`
    - Restart Anki
 
-3. Run the server:
+3. (Optional) Set up OpenAI API key for audio generation and similarity search:
+   ```bash
+   export OPENAI_API_KEY='your-api-key-here'
+   ```
+
+4. Run the server:
    ```bash
    python server.py
    ```
@@ -82,17 +87,56 @@ Lists all available note types (models) with comprehensive information.
 
 **Returns**: Information about all note types including fields, templates, and styling
 
+### `generate_audio`
+Generates audio files from text using OpenAI's text-to-speech API.
+
+**Parameters**:
+- `text` (str): Text to convert to speech
+- `language` (str, optional): Language code (default: "zh-CN")
+- `voice` (str, optional): Voice to use - alloy, echo, fable, onyx, nova, shimmer (default: "alloy")
+
+**Returns**: JSON object with base64-encoded MP3 audio data and metadata
+
+**Setup**: Requires `OPENAI_API_KEY` environment variable
+
+### `create_notes_bulk`
+Creates multiple notes in a single batch operation for maximum efficiency.
+
+**Parameters**:
+- `deck_name` (str): Name of the Anki deck to add notes to
+- `notes_list` (list): List of note dictionaries, each containing 'model_name', 'fields', and optionally 'tags'
+
+**Returns**: JSON object with success/failure counts and note IDs
+
+### `find_similar_notes`
+Finds notes with similar semantic content using vector embeddings, optimized for Chinese text.
+
+**Parameters**:
+- `deck_name` (str): Name of the Anki deck to search in
+- `search_text` (str): Text to search for (e.g., hanzi, word, or phrase)
+- `similarity_threshold` (float, optional): Minimum similarity score 0.0-1.0 (default: 0.7)
+- `max_results` (int, optional): Maximum number of results to return (default: 10)
+
+**Returns**: JSON object with similar notes ranked by similarity score
+
+**Setup**: Requires `OPENAI_API_KEY` environment variable
+
 ## Technical Details
 
 - **Framework**: FastMCP (built on FastAPI)
 - **Server Name**: "anki-mcp"
 - **AnkiConnect URL**: http://localhost:8765
-- **Dependencies**: fastapi, fastmcp, requests, uvicorn
+- **Dependencies**: fastapi, fastmcp, requests, uvicorn, numpy
+- **Optional**: OpenAI API key for audio generation and similarity search
 
 ## Features
 
-- Comprehensive error handling for AnkiConnect API failures
-- Smart data formatting with content truncation for readability
-- Random sampling for large datasets
-- Support for custom card templates and CSS styling
-- Type-safe parameter validation using Pydantic
+- **Audio Generation**: High-quality TTS using OpenAI's API with multiple voice options
+- **Bulk Operations**: Efficient batch note creation for large datasets
+- **Smart Similarity Search**: Vector embeddings for semantic duplicate detection, optimized for Chinese text
+- **Comprehensive Error Handling**: Robust error handling for all API failures
+- **Smart Data Formatting**: Content truncation and formatting for readability
+- **Random Sampling**: Efficient sampling for large datasets
+- **Custom Templates**: Support for custom card templates and CSS styling
+- **Type Safety**: Parameter validation using Pydantic
+- **Secure API Key Handling**: Environment variable-based API key management
