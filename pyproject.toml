@@ -1,0 +1,12 @@
+[project]
+name = "anki-mcp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.12",
+    "fastmcp>=2.5.2",
+    "pymcp>=0.1.0",
+    "requests>=2.32.3",
+]
