@@ -725,6 +725,72 @@ async def generate_and_save_audio(
     }
 
 @mcp_server.tool()
+async def update_notes_bulk(
+    updates: Annotated[list, Field(description="List of update dictionaries, each containing 'note_id', 'fields' dict, and optionally 'tags' list")]
+) -> dict:
+    """Update multiple notes in a single batch operation for efficiency. Each update should contain note_id and fields to update."""
+    if not updates:
+        return {"error": "No updates provided", "success": False}
+    
+    successful_updates = []
+    failed_updates = []
+    
+    for i, update_data in enumerate(updates):
+        if not isinstance(update_data, dict):
+            failed_updates.append({
+                "index": i,
+                "error": "Update data is not a dictionary",
+                "data": update_data
+            })
+            continue
+        
+        if "note_id" not in update_data or "fields" not in update_data:
+            failed_updates.append({
+                "index": i,
+                "error": "Missing required 'note_id' or 'fields'",
+                "data": update_data
+            })
+            continue
+        
+        # Use the existing update_note function for each update
+        try:
+            result = await update_note(
+                note_id=update_data["note_id"],
+                fields=update_data["fields"],
+                tags=update_data.get("tags")
+            )
+            
+            if result.get("success"):
+                successful_updates.append({
+                    "note_id": update_data["note_id"],
+                    "updated_fields": result["updated_fields"]
+                })
+            else:
+                failed_updates.append({
+                    "index": i,
+                    "note_id": update_data["note_id"],
+                    "error": result.get("error", "Unknown error"),
+                    "data": update_data
+                })
+        except Exception as e:
+            failed_updates.append({
+                "index": i,
+                "note_id": update_data.get("note_id", "unknown"),
+                "error": str(e),
+                "data": update_data
+            })
+    
+    return {
+        "success": True,
+        "total_attempted": len(updates),
+        "successful_count": len(successful_updates),
+        "failed_count": len(failed_updates),
+        "successful_updates": successful_updates,
+        "failed_updates": failed_updates,
+        "message": f"Successfully updated {len(successful_updates)} out of {len(updates)} notes"
+    }
+
+@mcp_server.tool()
 async def find_similar_notes(
     deck_name: Annotated[str, Field(description="Name of the Anki deck to search in")],
     search_text: Annotated[str, Field(description="Text to search for (e.g., hanzi, word, or phrase)")],
