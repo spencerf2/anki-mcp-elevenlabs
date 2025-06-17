@@ -457,7 +457,7 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 @mcp_server.tool()
 async def generate_audio(
     text: Annotated[str, Field(description="Text to convert to speech")],
-    language: Annotated[str, Field(description="Language code (e.g., 'zh-CN' for Chinese, 'en-US' for English)")] = "zh-CN",
+    language: Annotated[str, Field(description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English)")] = "cmn-cn",
     voice: Annotated[str, Field(description="Voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar' for Chinese HD voice)")] = "cmn-CN-Chirp3-HD-Achernar"
 ) -> dict:
     """Generate audio file from text using Google Cloud Chirp TTS API and return base64 encoded audio data."""
@@ -622,8 +622,8 @@ async def save_media_file(
 async def generate_and_save_audio(
     text: Annotated[str, Field(description="Text to convert to speech and save")],
     filename: Annotated[str, Field(description="Name for the audio file (e.g., 'pronunciation.mp3')")],
-    language: Annotated[str, Field(description="Language code (e.g., 'zh-CN' for Chinese, 'en-US' for English)")] = "zh-CN",
-    voice: Annotated[str, Field(description="Voice to use (alloy, echo, fable, onyx, nova, shimmer)")] = "alloy"
+    language: Annotated[str, Field(description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English)")] = "cmn-cn",
+    voice: Annotated[str, Field(description="Voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar' for Chinese HD voice)")] = "cmn-CN-Chirp3-HD-Achernar"
 ) -> dict:
     """Generate audio from text and save it to Anki's media collection, returning filename for use in cards."""
     
