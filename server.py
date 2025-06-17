@@ -260,6 +260,81 @@ async def create_note(
     return {"noteId": result["result"], "success": True}
 
 @mcp_server.tool()
+async def update_note(
+    note_id: Annotated[int, Field(description="ID of the note to update")],
+    fields: Annotated[dict, Field(description="Dictionary mapping field names to their new values (e.g., {'Audio': '[sound:pronunciation.mp3]'})")],
+    tags: Annotated[list, Field(description="Optional list of tags to replace existing tags")] = None
+) -> dict:
+    """Update specific fields of an existing note. Perfect for adding audio or other content to existing cards."""
+    
+    # First get the current note info to validate it exists and get current fields
+    response = requests.post(ANKI_CONNECT_URL, json={
+        "action": "notesInfo",
+        "version": 6,
+        "params": {
+            "notes": [note_id]
+        }
+    })
+    
+    if response.status_code != 200:
+        return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+    
+    result = response.json()
+    if result.get("error"):
+        return {"error": result["error"], "success": False}
+    
+    notes_info = result["result"]
+    if not notes_info or not notes_info[0]:
+        return {"error": f"Note with ID {note_id} not found", "success": False}
+    
+    current_note = notes_info[0]
+    
+    # Prepare the update - merge new fields with existing ones
+    updated_fields = {}
+    for field_name, field_data in current_note["fields"].items():
+        # Keep existing field values
+        updated_fields[field_name] = field_data["value"]
+    
+    # Update with new field values
+    for field_name, new_value in fields.items():
+        updated_fields[field_name] = new_value
+    
+    # Prepare note data for update
+    note_data = {
+        "id": note_id,
+        "fields": updated_fields
+    }
+    
+    # Add tags if provided, otherwise keep existing tags
+    if tags is not None:
+        note_data["tags"] = tags
+    else:
+        note_data["tags"] = current_note["tags"]
+    
+    # Update the note
+    response = requests.post(ANKI_CONNECT_URL, json={
+        "action": "updateNoteFields",
+        "version": 6,
+        "params": {
+            "note": note_data
+        }
+    })
+    
+    if response.status_code != 200:
+        return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+    
+    result = response.json()
+    if result.get("error"):
+        return {"error": result["error"], "success": False}
+    
+    return {
+        "success": True,
+        "note_id": note_id,
+        "updated_fields": list(fields.keys()),
+        "message": f"Successfully updated note {note_id} with fields: {', '.join(fields.keys())}"
+    }
+
+@mcp_server.tool()
 async def create_deck_with_note_type(
     deck_name: Annotated[str, Field(description="Name for the new Anki deck to create")],
     model_name: Annotated[str, Field(description="Name for the note type/model to create or use")],
