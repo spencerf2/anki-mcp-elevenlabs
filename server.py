@@ -458,46 +458,46 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 async def generate_audio(
     text: Annotated[str, Field(description="Text to convert to speech")],
     language: Annotated[str, Field(description="Language code (e.g., 'zh-CN' for Chinese, 'en-US' for English)")] = "zh-CN",
-    voice: Annotated[str, Field(description="Voice to use (alloy, echo, fable, onyx, nova, shimmer)")] = "alloy"
+    voice: Annotated[str, Field(description="Voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar' for Chinese HD voice)")] = "cmn-CN-Chirp3-HD-Achernar"
 ) -> dict:
-    """Generate audio file from text using OpenAI's text-to-speech API and return base64 encoded audio data."""
+    """Generate audio file from text using Google Cloud Chirp TTS API and return base64 encoded audio data."""
     
-    # Get API key from environment variable
-    api_key = os.getenv("OPENAI_API_KEY")
+    # Get Google Cloud API key from environment variable
+    api_key = os.getenv("GOOGLE_CLOUD_API_KEY")
     if not api_key:
         return {
-            "error": "OpenAI API key not found. Please set OPENAI_API_KEY environment variable.",
+            "error": "Google Cloud API key not found. Please set GOOGLE_CLOUD_API_KEY environment variable.",
             "success": False,
-            "setup_instructions": "Run: export OPENAI_API_KEY='your-api-key-here' or add it to your .env file"
+            "setup_instructions": "Run: export GOOGLE_CLOUD_API_KEY='your-api-key-here'"
         }
     
     try:
-        # OpenAI TTS API call
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
+        # Google Cloud TTS API call with API key as query parameter
         data = {
-            "model": "tts-1",  # or "tts-1-hd" for higher quality
-            "input": text,
-            "voice": voice
+            "input": {"text": text},
+            "voice": {
+                "languageCode": language,
+                "name": voice
+            },
+            "audioConfig": {
+                "audioEncoding": "MP3"
+            }
         }
         
         response = requests.post(
-            "https://api.openai.com/v1/audio/speech",
-            headers=headers,
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}",
+            headers={"Content-Type": "application/json"},
             json=data
         )
         
         if response.status_code != 200:
             return {
-                "error": f"OpenAI API error: {response.status_code} - {response.text}",
+                "error": f"Google Cloud TTS API error: {response.status_code} - {response.text}",
                 "success": False
             }
         
-        # Encode audio as base64
-        audio_base64 = base64.b64encode(response.content).decode('utf-8')
+        result = response.json()
+        audio_base64 = result["audioContent"]
         
         return {
             "success": True,
@@ -506,7 +506,7 @@ async def generate_audio(
             "language": language,
             "voice": voice,
             "text": text,
-            "model": "tts-1"
+            "model": "chirp"
         }
         
     except Exception as e:
@@ -568,6 +568,85 @@ async def create_notes_bulk(
         "failed_count": failed_count,
         "note_ids": note_ids,
         "message": f"Successfully created {len(successful_notes)} out of {len(notes_list)} notes"
+    }
+
+@mcp_server.tool()
+async def save_media_file(
+    filename: Annotated[str, Field(description="Name of the file to save (e.g., 'audio.mp3', 'image.jpg')")],
+    base64_data: Annotated[str, Field(description="Base64 encoded file data")],
+    media_type: Annotated[str, Field(description="Type of media file (audio, image, etc.)")] = "audio"
+) -> dict:
+    """Save base64 encoded media data as a file in Anki's media collection for use in cards."""
+    
+    try:
+        # Use AnkiConnect's storeMediaFile action to save the base64 data
+        response = requests.post(ANKI_CONNECT_URL, json={
+            "action": "storeMediaFile",
+            "version": 6,
+            "params": {
+                "filename": filename,
+                "data": base64_data
+            }
+        })
+        
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False
+            }
+        
+        result = response.json()
+        if result.get("error"):
+            return {
+                "error": result["error"],
+                "success": False
+            }
+        
+        # AnkiConnect returns the filename that was actually used (may be modified to avoid conflicts)
+        saved_filename = result["result"]
+        
+        return {
+            "success": True,
+            "filename": saved_filename,
+            "media_type": media_type,
+            "message": f"Media file saved as '{saved_filename}' in Anki's media collection"
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to save media file: {str(e)}",
+            "success": False
+        }
+
+@mcp_server.tool()
+async def generate_and_save_audio(
+    text: Annotated[str, Field(description="Text to convert to speech and save")],
+    filename: Annotated[str, Field(description="Name for the audio file (e.g., 'pronunciation.mp3')")],
+    language: Annotated[str, Field(description="Language code (e.g., 'zh-CN' for Chinese, 'en-US' for English)")] = "zh-CN",
+    voice: Annotated[str, Field(description="Voice to use (alloy, echo, fable, onyx, nova, shimmer)")] = "alloy"
+) -> dict:
+    """Generate audio from text and save it to Anki's media collection, returning filename for use in cards."""
+    
+    # First generate the audio
+    audio_result = await generate_audio(text, language, voice)
+    
+    if not audio_result.get("success"):
+        return audio_result
+    
+    # Then save it to Anki's media collection
+    save_result = await save_media_file(filename, audio_result["audio_base64"], "audio")
+    
+    if not save_result.get("success"):
+        return save_result
+    
+    return {
+        "success": True,
+        "filename": save_result["filename"],
+        "text": text,
+        "language": language,
+        "voice": voice,
+        "sound_tag": f"[sound:{save_result['filename']}]",
+        "message": f"Audio generated and saved as '{save_result['filename']}'. Use [sound:{save_result['filename']}] in your card fields."
     }
 
 @mcp_server.tool()
