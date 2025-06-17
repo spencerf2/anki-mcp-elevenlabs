@@ -26,9 +26,9 @@ This project integrates with several external APIs to provide enhanced functiona
 
 ## Setup
 
-1. Install dependencies:
+1. Install dependencies using uv:
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 2. Make sure Anki is running with the AnkiConnect add-on installed:
@@ -47,7 +47,7 @@ This project integrates with several external APIs to provide enhanced functiona
 
 4. Run the server:
    ```bash
-   python server.py
+   uv run server.py
    ```
 
 ## Claude Desktop Integration
@@ -63,8 +63,13 @@ To use this MCP server with Claude Desktop, add the following configuration to y
 {
   "mcpServers": {
     "anki-mcp": {
-      "command": "python",
-      "args": ["/path/to/your/anki-mcp/server.py"],
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/your/anki-mcp/",
+        "run",
+        "server.py"
+      ],
       "env": {
         "GOOGLE_CLOUD_API_KEY": "your-google-cloud-api-key-here",
         "OPENAI_API_KEY": "your-openai-api-key-here"
@@ -75,9 +80,9 @@ To use this MCP server with Claude Desktop, add the following configuration to y
 ```
 
 ### Setup Steps
-1. **Ensure dependencies are installed**: Make sure you've run `pip install -r requirements.txt` in your anki-mcp directory
+1. **Ensure dependencies are installed**: Make sure you've run `uv sync` in your anki-mcp directory
 2. **Find your config file** at the location above (create it if it doesn't exist)
-3. **Update the path**: Replace `/path/to/your/anki-mcp/server.py` with the actual path to your server.py file
+3. **Update the path**: Replace `/path/to/your/anki-mcp/` with the actual path to your anki-mcp directory
 4. **Add your API keys**: 
    - Replace `your-google-cloud-api-key-here` with your actual Google Cloud API key (for audio generation)
    - Replace `your-openai-api-key-here` with your actual OpenAI API key (for similarity search)
@@ -85,8 +90,8 @@ To use this MCP server with Claude Desktop, add the following configuration to y
 
 ### Important Notes
 - Make sure **Anki is running** with the AnkiConnect add-on before using the tools
-- The `python` command should point to the Python environment where you installed the dependencies
-- If using a virtual environment, you may need to use the full path to the Python executable (e.g., `/path/to/venv/bin/python`)
+- The `uv` command will automatically handle the Python environment and dependencies
+- Make sure `uv` is installed on your system (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ### Alternative: Using Environment Variables
 If you prefer to keep your API key in your shell environment, you can omit the `env` section:
@@ -95,8 +100,13 @@ If you prefer to keep your API key in your shell environment, you can omit the `
 {
   "mcpServers": {
     "anki-mcp": {
-      "command": "python",
-      "args": ["/path/to/your/anki-mcp/server.py"]
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/your/anki-mcp/",
+        "run",
+        "server.py"
+      ]
     }
   }
 }
@@ -236,6 +246,16 @@ Creates multiple notes in a single batch operation for maximum efficiency.
 
 **Returns**: JSON object with success/failure counts and note IDs
 
+### `update_notes_bulk`
+Updates multiple notes in a single batch operation for maximum efficiency.
+
+**Parameters**:
+- `updates` (list): List of update dictionaries, each containing 'note_id', 'fields' dict, and optionally 'tags' list
+
+**Returns**: JSON object with success/failure counts and detailed update results
+
+**Use Case**: Perfect for batch updates like adding audio files to multiple cards at once
+
 ### `find_similar_notes`
 Finds notes with similar semantic content using vector embeddings, optimized for Chinese text.
 
@@ -266,7 +286,7 @@ Finds notes with similar semantic content using vector embeddings, optimized for
 - **HD Audio Generation**: Premium quality TTS using Google Cloud Chirp voices, optimized for Chinese pronunciation
 - **Note Updates**: Update existing notes with new content like audio files while preserving other fields
 - **Media Management**: Direct integration with Anki's media collection for seamless file handling
-- **Bulk Operations**: Efficient batch note creation for large datasets
+- **Bulk Operations**: Efficient batch note creation and updates for large datasets
 - **Smart Similarity Search**: Vector embeddings for semantic duplicate detection, works excellently with Chinese text
 - **Comprehensive Error Handling**: Robust error handling for all API failures and edge cases
 - **Smart Data Formatting**: Content truncation and formatting for optimal readability
