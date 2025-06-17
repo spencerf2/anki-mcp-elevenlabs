@@ -1,6 +1,28 @@
 # Anki MCP Server
 
-A FastMCP server for interacting with Anki through the Model Context Protocol (MCP). This server provides tools for managing Anki decks, notes, and note types through the AnkiConnect add-on.
+A FastMCP server for interacting with Anki through the Model Context Protocol (MCP). This server provides comprehensive tools for managing Anki decks, notes, and note types, with advanced features including AI-powered audio generation, bulk operations, and semantic similarity search.
+
+## External APIs Used
+
+This project integrates with several external APIs to provide enhanced functionality:
+
+### Google Cloud Text-to-Speech API
+- **Purpose**: High-quality audio generation from text using Google's Chirp voices
+- **Use Case**: Generate pronunciation audio files for flashcards
+- **Features**: HD quality voices with natural pronunciation, especially excellent for Chinese
+- **Setup**: Requires `GOOGLE_CLOUD_API_KEY` environment variable
+
+### OpenAI Embeddings API
+- **Purpose**: Generate vector embeddings for semantic similarity search
+- **Use Case**: Find similar notes based on content meaning rather than exact text matches
+- **Features**: Works exceptionally well with Chinese text and cross-language similarity
+- **Setup**: Requires `OPENAI_API_KEY` environment variable
+
+### AnkiConnect API (Local)
+- **Purpose**: Interface with Anki desktop application
+- **Use Case**: All Anki operations (create/read/update notes, manage decks, etc.)
+- **Features**: Complete Anki functionality via HTTP API
+- **Setup**: AnkiConnect add-on must be installed and Anki must be running
 
 ## Setup
 
@@ -14,9 +36,13 @@ A FastMCP server for interacting with Anki through the Model Context Protocol (M
    - Enter code: `2055492159`
    - Restart Anki
 
-3. (Optional) Set up OpenAI API key for audio generation and similarity search:
+3. (Optional) Set up API keys for enhanced features:
    ```bash
-   export OPENAI_API_KEY='your-api-key-here'
+   # For audio generation with Google Cloud TTS
+   export GOOGLE_CLOUD_API_KEY='your-google-cloud-api-key-here'
+   
+   # For similarity search with OpenAI embeddings
+   export OPENAI_API_KEY='your-openai-api-key-here'
    ```
 
 4. Run the server:
@@ -40,6 +66,7 @@ To use this MCP server with Claude Desktop, add the following configuration to y
       "command": "python",
       "args": ["/path/to/your/anki-mcp/server.py"],
       "env": {
+        "GOOGLE_CLOUD_API_KEY": "your-google-cloud-api-key-here",
         "OPENAI_API_KEY": "your-openai-api-key-here"
       }
     }
@@ -51,7 +78,9 @@ To use this MCP server with Claude Desktop, add the following configuration to y
 1. **Ensure dependencies are installed**: Make sure you've run `pip install -r requirements.txt` in your anki-mcp directory
 2. **Find your config file** at the location above (create it if it doesn't exist)
 3. **Update the path**: Replace `/path/to/your/anki-mcp/server.py` with the actual path to your server.py file
-4. **Add your API key**: Replace `your-openai-api-key-here` with your actual OpenAI API key
+4. **Add your API keys**: 
+   - Replace `your-google-cloud-api-key-here` with your actual Google Cloud API key (for audio generation)
+   - Replace `your-openai-api-key-here` with your actual OpenAI API key (for similarity search)
 5. **Restart Claude Desktop** for the changes to take effect
 
 ### Important Notes
@@ -73,8 +102,9 @@ If you prefer to keep your API key in your shell environment, you can omit the `
 }
 ```
 
-Then set the environment variable in your shell:
+Then set the environment variables in your shell:
 ```bash
+export GOOGLE_CLOUD_API_KEY='your-google-cloud-api-key-here'
 export OPENAI_API_KEY='your-openai-api-key-here'
 ```
 
@@ -126,6 +156,18 @@ Creates a new note in the specified deck.
 
 **Returns**: JSON object with noteId and success status or error message
 
+### `update_note`
+Updates specific fields of an existing note while preserving other fields.
+
+**Parameters**:
+- `note_id` (int): ID of the note to update
+- `fields` (dict): Dictionary mapping field names to new values (e.g., `{'Audio': '[sound:pronunciation.mp3]'}`)
+- `tags` (list, optional): Optional list of tags to replace existing tags
+
+**Returns**: JSON object with success status and updated field information
+
+**Use Case**: Perfect for adding audio files to existing cards or updating specific content
+
 ### `create_deck_with_note_type`
 Creates a new deck and optionally a new note type with custom fields and templates.
 
@@ -145,16 +187,45 @@ Lists all available note types (models) with comprehensive information.
 **Returns**: Information about all note types including fields, templates, and styling
 
 ### `generate_audio`
-Generates audio files from text using OpenAI's text-to-speech API.
+Generates high-quality audio files from text using Google Cloud Text-to-Speech API with Chirp voices.
 
 **Parameters**:
 - `text` (str): Text to convert to speech
-- `language` (str, optional): Language code (default: "zh-CN")
-- `voice` (str, optional): Voice to use - alloy, echo, fable, onyx, nova, shimmer (default: "alloy")
+- `language` (str, optional): Language code (default: "cmn-cn" for Chinese)
+- `voice` (str, optional): Voice name (default: "cmn-CN-Chirp3-HD-Achernar" for Chinese HD voice)
 
 **Returns**: JSON object with base64-encoded MP3 audio data and metadata
 
-**Setup**: Requires `OPENAI_API_KEY` environment variable
+**Setup**: Requires `GOOGLE_CLOUD_API_KEY` environment variable
+
+**Features**: HD quality voices with natural pronunciation, especially excellent for Chinese language learning
+
+### `save_media_file`
+Saves base64 encoded media data as a file in Anki's media collection for use in cards.
+
+**Parameters**:
+- `filename` (str): Name of the file to save (e.g., 'audio.mp3', 'image.jpg')
+- `base64_data` (str): Base64 encoded file data
+- `media_type` (str, optional): Type of media file (default: "audio")
+
+**Returns**: JSON object with saved filename and success status
+
+**Use Case**: Save generated audio or other media files for use in Anki cards
+
+### `generate_and_save_audio`
+Generates audio from text and saves it directly to Anki's media collection in one operation.
+
+**Parameters**:
+- `text` (str): Text to convert to speech and save
+- `filename` (str): Name for the audio file (e.g., 'pronunciation.mp3')
+- `language` (str, optional): Language code (default: "cmn-cn" for Chinese)
+- `voice` (str, optional): Voice name (default: "cmn-CN-Chirp3-HD-Achernar")
+
+**Returns**: JSON object with filename and sound tag for use in card fields
+
+**Setup**: Requires `GOOGLE_CLOUD_API_KEY` environment variable
+
+**Use Case**: One-step audio generation and saving, returns `[sound:filename.mp3]` tag ready for card fields
 
 ### `create_notes_bulk`
 Creates multiple notes in a single batch operation for maximum efficiency.
@@ -184,16 +255,23 @@ Finds notes with similar semantic content using vector embeddings, optimized for
 - **Server Name**: "anki-mcp"
 - **AnkiConnect URL**: http://localhost:8765
 - **Dependencies**: fastapi, fastmcp, requests, uvicorn, numpy
-- **Optional**: OpenAI API key for audio generation and similarity search
+- **External APIs**: 
+  - Google Cloud Text-to-Speech API (for audio generation)
+  - OpenAI Embeddings API (for similarity search)
+- **Audio Format**: MP3 with base64 encoding
+- **Embeddings Model**: text-embedding-3-small (cost-effective and fast)
 
 ## Features
 
-- **Audio Generation**: High-quality TTS using OpenAI's API with multiple voice options
+- **HD Audio Generation**: Premium quality TTS using Google Cloud Chirp voices, optimized for Chinese pronunciation
+- **Note Updates**: Update existing notes with new content like audio files while preserving other fields
+- **Media Management**: Direct integration with Anki's media collection for seamless file handling
 - **Bulk Operations**: Efficient batch note creation for large datasets
-- **Smart Similarity Search**: Vector embeddings for semantic duplicate detection, optimized for Chinese text
-- **Comprehensive Error Handling**: Robust error handling for all API failures
-- **Smart Data Formatting**: Content truncation and formatting for readability
-- **Random Sampling**: Efficient sampling for large datasets
-- **Custom Templates**: Support for custom card templates and CSS styling
-- **Type Safety**: Parameter validation using Pydantic
+- **Smart Similarity Search**: Vector embeddings for semantic duplicate detection, works excellently with Chinese text
+- **Comprehensive Error Handling**: Robust error handling for all API failures and edge cases
+- **Smart Data Formatting**: Content truncation and formatting for optimal readability
+- **Random Sampling**: Efficient sampling for large datasets without memory issues
+- **Custom Templates**: Full support for custom card templates and CSS styling
+- **Type Safety**: Complete parameter validation using Pydantic
 - **Secure API Key Handling**: Environment variable-based API key management
+- **Cross-Language Support**: Optimized for Chinese language learning but supports multiple languages
