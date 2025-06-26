@@ -586,9 +586,9 @@ async def create_notes_bulk(
         }
         anki_notes.append(anki_note)
     
-    # Use Anki's addNotes action for bulk creation
+    # First check which notes can be added using canAddNotesWithErrorDetail
     response = requests.post(ANKI_CONNECT_URL, json={
-        "action": "addNotes",
+        "action": "canAddNotesWithErrorDetail",
         "version": 6,
         "params": {
             "notes": anki_notes
@@ -602,36 +602,65 @@ async def create_notes_bulk(
     if result.get("error"):
         return {"error": result["error"], "success": False}
     
-    note_ids = result["result"]
+    can_add_results = result["result"]
     
-    # Analyze results to identify successful creations and duplicates
-    successful_notes = []
-    duplicate_notes = []
+    # Separate notes that can be added from those that cannot
+    valid_notes = []
+    valid_note_indices = []
+    failed_notes = []
     
-    for i, note_id in enumerate(note_ids):
-        if note_id is not None:
-            successful_notes.append({
-                "index": i,
-                "note_id": note_id,
-                "fields": notes_list[i]["fields"]
-            })
+    for i, can_add_result in enumerate(can_add_results):
+        if can_add_result["canAdd"]:
+            valid_notes.append(anki_notes[i])
+            valid_note_indices.append(i)
         else:
-            # When note_id is None, it typically means the note is a duplicate
-            duplicate_notes.append({
+            failed_notes.append({
                 "index": i,
                 "fields": notes_list[i]["fields"],
-                "model_name": notes_list[i]["model_name"],
-                "tags": notes_list[i].get("tags", [])
+                "model_name": notes_list[i]["model_name"], 
+                "tags": notes_list[i].get("tags", []),
+                "error": can_add_result["error"]
             })
+    
+    successful_notes = []
+    
+    # Only attempt to add notes that can be added
+    if valid_notes:
+        response = requests.post(ANKI_CONNECT_URL, json={
+            "action": "addNotes",
+            "version": 6,
+            "params": {
+                "notes": valid_notes
+            }
+        })
+        
+        if response.status_code != 200:
+            return {"error": f"Failed to connect to Anki: {response.status_code}", "success": False}
+        
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+        
+        note_ids = result["result"]
+        
+        # Build successful notes list
+        for i, note_id in enumerate(note_ids):
+            if note_id is not None:
+                original_index = valid_note_indices[i]
+                successful_notes.append({
+                    "index": original_index,
+                    "note_id": note_id,
+                    "fields": notes_list[original_index]["fields"]
+                })
     
     return {
         "success": True,
         "total_attempted": len(notes_list),
         "successful_count": len(successful_notes),
-        "duplicate_count": len(duplicate_notes),
+        "failed_count": len(failed_notes),
         "successful_notes": successful_notes,
-        "duplicate_notes": duplicate_notes,
-        "message": f"Created {len(successful_notes)} new notes. {len(duplicate_notes)} notes were duplicates and skipped."
+        "failed_notes": failed_notes,
+        "message": f"Created {len(successful_notes)} new notes. {len(failed_notes)} notes failed (see failed_notes for details)."
     }
 
 @mcp_server.tool()

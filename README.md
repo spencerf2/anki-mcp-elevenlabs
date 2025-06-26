@@ -233,11 +233,12 @@ Creates multiple notes in a single batch operation for maximum efficiency. Handl
 - `deck_name` (str): Name of the Anki deck to add notes to
 - `notes_list` (list): List of note dictionaries, each containing 'model_name', 'fields', and optionally 'tags'
 
-**Returns**: JSON object with success/duplicate counts, successful notes array, and duplicate notes array
+**Returns**: JSON object with success/failed counts, successful notes array, and failed notes array with specific error details
 
 **Features**: 
-- Continues creating non-duplicate notes even when some duplicates are in the batch
-- Provides detailed reporting of which specific notes were duplicates
+- Uses canAddNotesWithErrorDetail to pre-check which notes can be added
+- Only attempts to add valid notes, ensuring no batch failures
+- Provides detailed error reporting for each failed note (duplicates, validation errors, etc.)
 - Returns note IDs for successfully created notes for further processing
 
 ### `update_notes_bulk`
@@ -290,5 +291,5 @@ Finds notes that contain the search text as a substring in any field. Simple and
 - **Custom Templates**: Full support for custom card templates and CSS styling
 - **Type Safety**: Complete parameter validation using Pydantic
 - **Secure API Key Handling**: Environment variable-based API key management
-- **Graceful Duplicate Handling**: Smart duplicate detection with detailed reporting in bulk operations
+- **Robust Error Handling**: Pre-validation of notes with detailed error reporting for duplicates and other issues
 - **Cross-Language Support**: Optimized for Chinese language learning but supports multiple languages
