@@ -12,11 +12,6 @@ This project integrates with several external APIs to provide enhanced functiona
 - **Features**: HD quality voices with natural pronunciation, especially excellent for Chinese
 - **Setup**: Requires `GOOGLE_CLOUD_API_KEY` environment variable
 
-### OpenAI Embeddings API
-- **Purpose**: Generate vector embeddings for semantic similarity search
-- **Use Case**: Find similar notes based on content meaning rather than exact text matches
-- **Features**: Works exceptionally well with Chinese text and cross-language similarity
-- **Setup**: Requires `OPENAI_API_KEY` environment variable
 
 ### AnkiConnect API (Local)
 - **Purpose**: Interface with Anki desktop application
@@ -36,13 +31,10 @@ This project integrates with several external APIs to provide enhanced functiona
    - Enter code: `2055492159`
    - Restart Anki
 
-3. (Optional) Set up API keys for enhanced features:
+3. (Optional) Set up API key for audio generation:
    ```bash
    # For audio generation with Google Cloud TTS
    export GOOGLE_CLOUD_API_KEY='your-google-cloud-api-key-here'
-   
-   # For similarity search with OpenAI embeddings
-   export OPENAI_API_KEY='your-openai-api-key-here'
    ```
 
 4. Run the server:
@@ -71,8 +63,7 @@ To use this MCP server with Claude Desktop, add the following configuration to y
         "server.py"
       ],
       "env": {
-        "GOOGLE_CLOUD_API_KEY": "your-google-cloud-api-key-here",
-        "OPENAI_API_KEY": "your-openai-api-key-here"
+        "GOOGLE_CLOUD_API_KEY": "your-google-cloud-api-key-here"
       }
     }
   }
@@ -83,9 +74,8 @@ To use this MCP server with Claude Desktop, add the following configuration to y
 1. **Ensure dependencies are installed**: Make sure you've run `uv sync` in your anki-mcp directory
 2. **Find your config file** at the location above (create it if it doesn't exist)
 3. **Update the path**: Replace `/path/to/your/anki-mcp/` with the actual path to your anki-mcp directory
-4. **Add your API keys**: 
+4. **Add your API key**: 
    - Replace `your-google-cloud-api-key-here` with your actual Google Cloud API key (for audio generation)
-   - Replace `your-openai-api-key-here` with your actual OpenAI API key (for similarity search)
 5. **Restart Claude Desktop** for the changes to take effect
 
 ### Important Notes
@@ -112,10 +102,9 @@ If you prefer to keep your API key in your shell environment, you can omit the `
 }
 ```
 
-Then set the environment variables in your shell:
+Then set the environment variable in your shell:
 ```bash
 export GOOGLE_CLOUD_API_KEY='your-google-cloud-api-key-here'
-export OPENAI_API_KEY='your-openai-api-key-here'
 ```
 
 ### Verification
@@ -238,13 +227,18 @@ Generates audio from text and saves it directly to Anki's media collection in on
 **Use Case**: One-step audio generation and saving, returns `[sound:filename.mp3]` tag ready for card fields
 
 ### `create_notes_bulk`
-Creates multiple notes in a single batch operation for maximum efficiency.
+Creates multiple notes in a single batch operation for maximum efficiency. Handles duplicates gracefully by reporting which notes are duplicates while still creating non-duplicate notes.
 
 **Parameters**:
 - `deck_name` (str): Name of the Anki deck to add notes to
 - `notes_list` (list): List of note dictionaries, each containing 'model_name', 'fields', and optionally 'tags'
 
-**Returns**: JSON object with success/failure counts and note IDs
+**Returns**: JSON object with success/duplicate counts, successful notes array, and duplicate notes array
+
+**Features**: 
+- Continues creating non-duplicate notes even when some duplicates are in the batch
+- Provides detailed reporting of which specific notes were duplicates
+- Returns note IDs for successfully created notes for further processing
 
 ### `update_notes_bulk`
 Updates multiple notes in a single batch operation for maximum efficiency.
@@ -257,29 +251,31 @@ Updates multiple notes in a single batch operation for maximum efficiency.
 **Use Case**: Perfect for batch updates like adding audio files to multiple cards at once
 
 ### `find_similar_notes`
-Finds notes with similar semantic content using vector embeddings, optimized for Chinese text.
+Finds notes that contain the search text as a substring in any field. Simple and reliable text matching.
 
 **Parameters**:
 - `deck_name` (str): Name of the Anki deck to search in
-- `search_text` (str): Text to search for (e.g., hanzi, word, or phrase)
-- `similarity_threshold` (float, optional): Minimum similarity score 0.0-1.0 (default: 0.7)
-- `max_results` (int, optional): Maximum number of results to return (default: 10)
+- `search_text` (str): Text to search for as a substring in any field
+- `case_sensitive` (bool, optional): Whether the search should be case sensitive (default: false)
+- `max_results` (int, optional): Maximum number of matching notes to return (default: 20)
 
-**Returns**: JSON object with similar notes ranked by similarity score
+**Returns**: JSON object with matching notes and details about which fields contained the search text
 
-**Setup**: Requires `OPENAI_API_KEY` environment variable
+**Features**:
+- Fast substring matching across all note fields
+- Case-sensitive or case-insensitive search options
+- Shows exactly which fields matched the search criteria
+- No external API dependencies required
 
 ## Technical Details
 
 - **Framework**: FastMCP (built on FastAPI)
 - **Server Name**: "anki-mcp"
 - **AnkiConnect URL**: http://localhost:8765
-- **Dependencies**: fastapi, fastmcp, requests, uvicorn, numpy
+- **Dependencies**: fastapi, fastmcp, requests, uvicorn
 - **External APIs**: 
   - Google Cloud Text-to-Speech API (for audio generation)
-  - OpenAI Embeddings API (for similarity search)
 - **Audio Format**: MP3 with base64 encoding
-- **Embeddings Model**: text-embedding-3-small (cost-effective and fast)
 
 ## Features
 
@@ -287,11 +283,12 @@ Finds notes with similar semantic content using vector embeddings, optimized for
 - **Note Updates**: Update existing notes with new content like audio files while preserving other fields
 - **Media Management**: Direct integration with Anki's media collection for seamless file handling
 - **Bulk Operations**: Efficient batch note creation and updates for large datasets
-- **Smart Similarity Search**: Vector embeddings for semantic duplicate detection, works excellently with Chinese text
+- **Fast Text Search**: Simple substring matching for finding notes containing specific text
 - **Comprehensive Error Handling**: Robust error handling for all API failures and edge cases
 - **Smart Data Formatting**: Content truncation and formatting for optimal readability
 - **Random Sampling**: Efficient sampling for large datasets without memory issues
 - **Custom Templates**: Full support for custom card templates and CSS styling
 - **Type Safety**: Complete parameter validation using Pydantic
 - **Secure API Key Handling**: Environment variable-based API key management
+- **Graceful Duplicate Handling**: Smart duplicate detection with detailed reporting in bulk operations
 - **Cross-Language Support**: Optimized for Chinese language learning but supports multiple languages

@@ -4,7 +4,6 @@ import random
 import base64
 import os
 import tempfile
-import numpy as np
 from typing import Annotated, List, Tuple
 from pydantic import Field
 
@@ -499,35 +498,6 @@ async def list_note_types() -> str:
 
     return "\n".join(output)
 
-def _get_text_embedding(text: str, api_key: str) -> List[float]:
-    """Get text embedding using OpenAI's embedding API."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    data = {
-        "model": "text-embedding-3-small",  # Cheaper and faster than ada-002
-        "input": text
-    }
-    
-    response = requests.post(
-        "https://api.openai.com/v1/embeddings",
-        headers=headers,
-        json=data
-    )
-    
-    if response.status_code != 200:
-        raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
-    
-    result = response.json()
-    return result["data"][0]["embedding"]
-
-def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """Calculate cosine similarity between two vectors."""
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 @mcp_server.tool()
 async def generate_audio(
@@ -595,7 +565,7 @@ async def create_notes_bulk(
     deck_name: Annotated[str, Field(description="Name of the Anki deck to add notes to")],
     notes_list: Annotated[list, Field(description="List of note dictionaries, each containing 'model_name', 'fields', and optionally 'tags'")]
 ) -> dict:
-    """Create multiple notes in a single batch operation for efficiency."""
+    """Create multiple notes in a single batch operation for efficiency. Handles duplicates gracefully by reporting which notes are duplicates while still creating non-duplicate notes."""
     if not notes_list:
         return {"error": "No notes provided", "success": False}
     
@@ -633,16 +603,35 @@ async def create_notes_bulk(
         return {"error": result["error"], "success": False}
     
     note_ids = result["result"]
-    successful_notes = [note_id for note_id in note_ids if note_id is not None]
-    failed_count = len([note_id for note_id in note_ids if note_id is None])
+    
+    # Analyze results to identify successful creations and duplicates
+    successful_notes = []
+    duplicate_notes = []
+    
+    for i, note_id in enumerate(note_ids):
+        if note_id is not None:
+            successful_notes.append({
+                "index": i,
+                "note_id": note_id,
+                "fields": notes_list[i]["fields"]
+            })
+        else:
+            # When note_id is None, it typically means the note is a duplicate
+            duplicate_notes.append({
+                "index": i,
+                "fields": notes_list[i]["fields"],
+                "model_name": notes_list[i]["model_name"],
+                "tags": notes_list[i].get("tags", [])
+            })
     
     return {
         "success": True,
         "total_attempted": len(notes_list),
         "successful_count": len(successful_notes),
-        "failed_count": failed_count,
-        "note_ids": note_ids,
-        "message": f"Successfully created {len(successful_notes)} out of {len(notes_list)} notes"
+        "duplicate_count": len(duplicate_notes),
+        "successful_notes": successful_notes,
+        "duplicate_notes": duplicate_notes,
+        "message": f"Created {len(successful_notes)} new notes. {len(duplicate_notes)} notes were duplicates and skipped."
     }
 
 @mcp_server.tool()
@@ -793,20 +782,11 @@ async def update_notes_bulk(
 @mcp_server.tool()
 async def find_similar_notes(
     deck_name: Annotated[str, Field(description="Name of the Anki deck to search in")],
-    search_text: Annotated[str, Field(description="Text to search for (e.g., hanzi, word, or phrase)")],
-    similarity_threshold: Annotated[float, Field(description="Minimum similarity score (0.0-1.0, default 0.7)", ge=0.0, le=1.0)] = 0.7,
-    max_results: Annotated[int, Field(description="Maximum number of similar notes to return", ge=1, le=50)] = 10
+    search_text: Annotated[str, Field(description="Text to search for as a substring in any field")],
+    case_sensitive: Annotated[bool, Field(description="Whether the search should be case sensitive")] = False,
+    max_results: Annotated[int, Field(description="Maximum number of matching notes to return", ge=1, le=100)] = 20
 ) -> dict:
-    """Find notes with similar semantic content using vector embeddings, works well with Chinese text."""
-    
-    # Get API key for embeddings
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {
-            "error": "OpenAI API key not found. Please set OPENAI_API_KEY environment variable.",
-            "success": False,
-            "setup_instructions": "Run: export OPENAI_API_KEY='your-api-key-here' or add it to your .env file"
-        }
+    """Find notes that contain the search text as a substring in any field. Simple and reliable text matching."""
     
     try:
         # Get all notes from the deck first
@@ -847,56 +827,55 @@ async def find_similar_notes(
         
         notes = result["result"]
         
-        # Get embedding for search text
-        search_embedding = _get_text_embedding(search_text, api_key)
+        # Prepare search text for comparison
+        search_lower = search_text.lower() if not case_sensitive else search_text
         
-        # Calculate similarities
-        similarities = []
+        # Find matching notes
+        matching_notes = []
         for note in notes:
-            # Combine all field values for embedding comparison
-            combined_text = " ".join([
-                field_data["value"] for field_data in note["fields"].values() 
-                if field_data["value"].strip()
-            ])
-            
-            if not combined_text.strip():
-                continue
+            # Check each field for the search text
+            matches_found = []
+            for field_name, field_data in note["fields"].items():
+                field_value = field_data["value"].strip()
+                if not field_value:
+                    continue
+                    
+                # Compare based on case sensitivity setting
+                field_compare = field_value.lower() if not case_sensitive else field_value
                 
-            try:
-                note_embedding = _get_text_embedding(combined_text, api_key)
-                similarity = _cosine_similarity(search_embedding, note_embedding)
-                
-                if similarity >= similarity_threshold:
-                    similarities.append({
-                        "note": note,
-                        "similarity": similarity,
-                        "combined_text": combined_text
+                if search_lower in field_compare:
+                    matches_found.append({
+                        "field_name": field_name,
+                        "field_value": field_value
                     })
-            except Exception as e:
-                # Skip notes that fail embedding generation
-                continue
+            
+            # If any field matched, add the note to results
+            if matches_found:
+                matching_notes.append({
+                    "note": note,
+                    "matching_fields": matches_found
+                })
         
-        # Sort by similarity (highest first) and limit results
-        similarities.sort(key=lambda x: x["similarity"], reverse=True)
-        similarities = similarities[:max_results]
+        # Limit results
+        matching_notes = matching_notes[:max_results]
         
-        if not similarities:
+        if not matching_notes:
             return {
                 "success": True,
                 "found_count": 0,
-                "message": f"No notes found with similarity >= {similarity_threshold} to '{search_text}' in deck '{deck_name}'",
+                "message": f"No notes found containing '{search_text}' in deck '{deck_name}'",
                 "notes": []
             }
         
         # Format results
         formatted_notes = []
-        for item in similarities:
+        for item in matching_notes:
             note = item["note"]
             formatted_note = {
                 "note_id": note["noteId"],
                 "model_name": note["modelName"],
                 "tags": note["tags"],
-                "similarity_score": round(item["similarity"], 4),
+                "matching_fields": item["matching_fields"],
                 "fields": {}
             }
             
@@ -908,15 +887,15 @@ async def find_similar_notes(
         return {
             "success": True,
             "search_text": search_text,
-            "found_count": len(similarities),
-            "similarity_threshold": similarity_threshold,
+            "found_count": len(matching_notes),
+            "case_sensitive": case_sensitive,
             "deck_name": deck_name,
             "notes": formatted_notes
         }
         
     except Exception as e:
         return {
-            "error": f"Failed to find similar notes: {str(e)}",
+            "error": f"Failed to find matching notes: {str(e)}",
             "success": False
         }
 
