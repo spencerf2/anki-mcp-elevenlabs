@@ -1,12 +1,14 @@
 [project]
-name = "anki-mcp"
+name = "anki-mcp-elevenlabs"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server for Anki supporting both Google Cloud TTS and ElevenLabs TTS via Pipecat"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.115.12",
-    "fastmcp>=2.5.2",
-    "pymcp>=0.1.0",
-    "requests>=2.32.3",
+  "fastapi>=0.115.12",
+  "pymcp>=0.1.0",
+  "requests>=2.32.3",
+  "mcp[cli] (>=1.12.3,<2.0.0)",
+  "uvicorn (>=0.35.0,<0.36.0)",
+  "google-cloud-texttospeech (>=2.27.0,<3.0.0)",
 ]
