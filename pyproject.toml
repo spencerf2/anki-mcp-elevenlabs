@@ -3,7 +3,7 @@ name = "anki-mcp-elevenlabs"
 version = "0.1.0"
 description = "MCP server for Anki supporting both Google Cloud TTS and ElevenLabs TTS via Pipecat"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4.0"
 dependencies = [
   "fastapi>=0.115.12",
   "pymcp>=0.1.0",
@@ -11,6 +11,11 @@ dependencies = [
   "mcp[cli] (>=1.12.3,<2.0.0)",
   "uvicorn (>=0.35.0,<0.36.0)",
   "google-cloud-texttospeech (>=2.27.0,<3.0.0)",
+  "pipecat-ai (>=0.0.79,<0.0.80)",
+  "pytest (>=8.4.1,<9.0.0)",
+  "websockets (>=15.0.1,<16.0.0)",
+  "pyaudio (>=0.2.14,<0.3.0)",
+  "pytest-asyncio (>=1.1.0,<2.0.0)",
 ]
 
 [tool.ruff]
