@@ -7,7 +7,8 @@ import tempfile
 from typing import Annotated, List, Tuple
 from pydantic import Field
 
-from tts import generate_google_audio
+from .tts import generate_tts_audio
+from .server_utils import safe_get_error
 
 
 mcp_server = FastMCP("anki-mcp")
@@ -500,8 +501,8 @@ async def list_note_types() -> str:
         return f"Error: Failed to connect to Anki: {response.status_code}"
 
     result = response.json()
-    if result.get("error"):
-        return f"Error: {result['error']}"
+    if error := safe_get_error(result):
+        return f"Error: {error}"
 
     model_names = result["result"]
     output = [f"Available note types ({len(model_names)}):\n"]
@@ -522,7 +523,7 @@ async def list_note_types() -> str:
 
         if response.status_code == 200:
             result = response.json()
-            if not result.get("error"):
+            if not safe_get_error(result):
                 fields = result["result"]
                 output.append(f"  Fields: {', '.join(fields)}")
 
@@ -538,11 +539,10 @@ async def list_note_types() -> str:
 
         if response.status_code == 200:
             result = response.json()
-            if not result.get("error"):
+            if not safe_get_error(result):
                 templates = result["result"]
                 output.append(f"  Templates: {len(templates)} card type(s)")
-                for template in templates:
-                    template_name = template.get("Name", "Unnamed")
+                for template_name in templates:
                     output.append(f"    - {template_name}")
 
         # Get styling (CSS)
@@ -557,7 +557,7 @@ async def list_note_types() -> str:
 
         if response.status_code == 200:
             result = response.json()
-            if not result.get("error"):
+            if not safe_get_error(result):
                 css_length = len(result["result"]["css"])
                 output.append(f"  CSS: {css_length} characters")
 
@@ -569,20 +569,27 @@ async def list_note_types() -> str:
 @mcp_server.tool()
 async def generate_audio(
     text: Annotated[str, Field(description="Text to convert to speech")],
+    provider: Annotated[
+        str,
+        Field(description="TTS provider to use ('elevenlabs' or 'google')"),
+    ] = "elevenlabs",
     language: Annotated[
         str,
         Field(
-            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English)"
+            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English) - used by Google TTS"
         ),
     ] = "cmn-cn",
     voice: Annotated[
         str,
         Field(
-            description="Voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar' for Chinese HD voice)"
+            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF'). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
         ),
-    ] = "cmn-CN-Chirp3-HD-Achernar",
+    ] = None,
 ) -> dict:
-    return await generate_google_audio(text, language, voice)
+    """Generate audio using the specified TTS provider (ElevenLabs via Pipecat or Google Cloud TTS)."""
+    return await generate_tts_audio(
+        text=text, provider=provider, language=language, voice=voice
+    )
 
 
 @mcp_server.tool()
@@ -761,23 +768,27 @@ async def generate_and_save_audio(
     filename: Annotated[
         str, Field(description="Name for the audio file (e.g., 'pronunciation.mp3')")
     ],
+    provider: Annotated[
+        str,
+        Field(description="TTS provider to use ('elevenlabs' or 'google')"),
+    ] = "elevenlabs",
     language: Annotated[
         str,
         Field(
-            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English)"
+            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English) - used by Google TTS"
         ),
     ] = "cmn-cn",
     voice: Annotated[
         str,
         Field(
-            description="Voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar' for Chinese HD voice)"
+            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF'). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
         ),
-    ] = "cmn-CN-Chirp3-HD-Achernar",
+    ] = None,
 ) -> dict:
-    """Generate audio from text and save it to Anki's media collection, returning filename for use in cards."""
+    """Generate audio from text using specified provider and save it to Anki's media collection, returning filename for use in cards."""
 
     # First generate the audio
-    audio_result = await generate_audio(text, language, voice)
+    audio_result = await generate_audio(text, provider, language, voice)
 
     if not audio_result.get("success"):
         return audio_result
@@ -792,10 +803,11 @@ async def generate_and_save_audio(
         "success": True,
         "filename": save_result["filename"],
         "text": text,
+        "provider": provider,
         "language": language,
         "voice": voice,
         "sound_tag": f"[sound:{save_result['filename']}]",
-        "message": f"Audio generated and saved as '{save_result['filename']}'. Use [sound:{save_result['filename']}] in your card fields.",
+        "message": f"Audio generated using {provider} and saved as '{save_result['filename']}'. Use [sound:{save_result['filename']}] in your card fields.",
     }
 
 
@@ -1006,7 +1018,3 @@ async def find_similar_notes(
 
     except Exception as e:
         return {"error": f"Failed to find matching notes: {str(e)}", "success": False}
-
-
-if __name__ == "__main__":
-    mcp_server.run()
