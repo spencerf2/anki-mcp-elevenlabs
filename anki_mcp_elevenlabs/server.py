@@ -1018,3 +1018,235 @@ async def find_similar_notes(
 
     except Exception as e:
         return {"error": f"Failed to find matching notes: {str(e)}", "success": False}
+
+
+@mcp_server.tool()
+async def list_media_files(
+    pattern: Annotated[
+        str, Field(description="Optional pattern like '*.mp3' or '*chinese*' to filter files")
+    ] = None,
+) -> dict:
+    """List all media files in Anki's collection, optionally filtered by pattern."""
+    try:
+        params = {}
+        if pattern:
+            params["pattern"] = pattern
+        
+        response = requests.post(
+            ANKI_CONNECT_URL,
+            json={
+                "action": "getMediaFilesNames",
+                "version": 6,
+                "params": params,
+            },
+        )
+
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False,
+            }
+
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+
+        files = result["result"]
+        return {
+            "success": True,
+            "files": sorted(files),  # Sort for consistent output
+            "count": len(files),
+            "pattern": pattern,
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to list media files: {str(e)}", "success": False}
+
+
+@mcp_server.tool()
+async def media_file_exists(
+    filename: Annotated[
+        str, Field(description="Name of the media file to check (e.g., 'audio.mp3')")
+    ],
+) -> dict:
+    """Check if a specific media file exists in Anki's collection."""
+    try:
+        response = requests.post(
+            ANKI_CONNECT_URL,
+            json={
+                "action": "retrieveMediaFile",
+                "version": 6,
+                "params": {"filename": filename},
+            },
+        )
+
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False,
+            }
+
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+
+        exists = result["result"] is not False
+        
+        return {
+            "success": True,
+            "exists": exists,
+            "filename": filename,
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to check media file existence: {str(e)}", "success": False}
+
+
+@mcp_server.tool()
+async def retrieve_media_file(
+    filename: Annotated[
+        str, Field(description="Name of the media file to retrieve (e.g., 'audio.mp3')")
+    ],
+    return_base64: Annotated[
+        bool, Field(description="Whether to return base64 encoded file contents")
+    ] = True,
+) -> dict:
+    """Retrieve a media file from Anki's collection."""
+    try:
+        response = requests.post(
+            ANKI_CONNECT_URL,
+            json={
+                "action": "retrieveMediaFile",
+                "version": 6,
+                "params": {"filename": filename},
+            },
+        )
+
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False,
+            }
+
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+
+        file_data = result["result"]
+        
+        if file_data is False:
+            return {
+                "success": True,
+                "exists": False,
+                "filename": filename,
+                "message": f"Media file '{filename}' not found",
+            }
+
+        return_data = {
+            "success": True,
+            "exists": True,
+            "filename": filename,
+        }
+        
+        if return_base64:
+            return_data["base64_data"] = file_data
+        else:
+            return_data["message"] = f"Media file '{filename}' exists (content not returned)"
+        
+        return return_data
+
+    except Exception as e:
+        return {"error": f"Failed to retrieve media file: {str(e)}", "success": False}
+
+
+@mcp_server.tool()
+async def delete_media_file(
+    filename: Annotated[
+        str, Field(description="Name of the media file to delete (e.g., 'audio.mp3')")
+    ],
+    confirm: Annotated[
+        bool, Field(description="Safety flag - must be True to proceed with deletion")
+    ] = False,
+) -> dict:
+    """Delete a media file from Anki's collection. Requires confirm=True for safety."""
+    if not confirm:
+        return {
+            "error": "Deletion requires confirm=True for safety",
+            "success": False,
+            "filename": filename,
+        }
+
+    try:
+        exists_result = await media_file_exists(filename)
+        if not exists_result.get("success"):
+            return exists_result
+        
+        if not exists_result.get("exists"):
+            return {
+                "success": True,
+                "deleted": False,
+                "filename": filename,
+                "message": f"Media file '{filename}' does not exist",
+            }
+
+        response = requests.post(
+            ANKI_CONNECT_URL,
+            json={
+                "action": "deleteMediaFile",
+                "version": 6,
+                "params": {"filename": filename},
+            },
+        )
+
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False,
+            }
+
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+
+        return {
+            "success": True,
+            "deleted": True,
+            "filename": filename,
+            "message": f"Media file '{filename}' deleted successfully",
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to delete media file: {str(e)}", "success": False}
+
+
+@mcp_server.tool()
+async def get_media_directory() -> dict:
+    """Get the full path to Anki's media directory."""
+    try:
+        response = requests.post(
+            ANKI_CONNECT_URL,
+            json={
+                "action": "getMediaDirPath",
+                "version": 6,
+            },
+        )
+
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to connect to Anki: {response.status_code}",
+                "success": False,
+            }
+
+        result = response.json()
+        if result.get("error"):
+            return {"error": result["error"], "success": False}
+
+        path = result["result"]
+        return {
+            "success": True,
+            "path": path,
+            "message": f"Media directory: {path}",
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to get media directory path: {str(e)}", "success": False}
