@@ -5,13 +5,15 @@ Run this to test the new media functions directly.
 """
 
 import asyncio
-from anki_mcp_elevenlabs.server import (
+import pytest
+from ..server import (
     list_media_files,
     media_file_exists,
     retrieve_media_file,
     get_media_directory,
 )
 
+@pytest.mark.asyncio
 async def test_media_methods():
     """Test all media methods and print results"""
     
