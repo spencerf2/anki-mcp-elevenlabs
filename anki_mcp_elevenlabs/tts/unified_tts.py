@@ -15,7 +15,8 @@ async def generate_tts_audio(
         return await generate_elevenlabs_audio(
             text=text,
             voice_id=voice,
-            model=kwargs.get("model", "eleven_monolingual_v1"),
+            model=kwargs.get("model", None),  # Let ElevenLabs function auto-select
+            language=language,
         )
 
     elif provider.lower() == "google":
