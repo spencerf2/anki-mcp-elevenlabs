@@ -98,22 +98,48 @@ async def get_deck_notes(
     deck_name: Annotated[
         str, Field(description="Name of the Anki deck to retrieve notes from")
     ],
+    offset: Annotated[
+        int, Field(description="Starting position for pagination (0-based)", ge=0)
+    ] = 0,
+    limit: Annotated[
+        int, Field(description="Maximum number of notes to return", ge=1, le=100)
+    ] = 50,
+    ids_only: Annotated[
+        bool, Field(description="Return only note IDs instead of full note data")
+    ] = False,
 ) -> str:
-    """Get all notes/cards from a specific deck."""
-    result = await _fetch_deck_notes(deck_name)
+    """Get notes/cards from a specific deck with pagination support."""
+    find_result = await _anki_request("findNotes", {"query": f'deck:"{deck_name}"'})
+    if find_result.get("error"):
+        return f"Error: {find_result['error']}"
     
-    if result.get("error"):
-        return f"Error: {result['error']}"
-    
-    data = result["result"]
-    notes = data["notes"]
-    if not notes:
+    all_note_ids = find_result["result"]
+    if not all_note_ids:
         return f"No notes found in deck '{deck_name}'"
-
+    
+    total_notes = len(all_note_ids)
+    
+    start_idx = offset
+    end_idx = min(offset + limit, total_notes)
+    
+    if start_idx >= total_notes:
+        return f"Offset {offset} exceeds total notes ({total_notes}) in deck '{deck_name}'"
+    
+    paginated_ids = all_note_ids[start_idx:end_idx]
+    
+    if ids_only:
+        return f"Note IDs in deck '{deck_name}' (showing {len(paginated_ids)} of {total_notes}, offset {offset}):\n" + "\n".join(map(str, paginated_ids))
+    
+    notes_result = await _anki_request("notesInfo", {"notes": paginated_ids})
+    if notes_result.get("error"):
+        return f"Error retrieving note details: {notes_result['error']}"
+    
+    notes = notes_result["result"]
+    
     # Format the notes for better readability
-    output = [f"Notes in deck '{deck_name}' ({len(notes)} total):\n"]
+    output = [f"Notes in deck '{deck_name}' (showing {len(notes)} of {total_notes}, offset {offset}):\n"]
 
-    for i, note in enumerate(notes, 1):
+    for i, note in enumerate(notes, start=offset + 1):
         output.append(f"Note {i} (ID: {note['noteId']}):")
         output.append(f"  Model: {note['modelName']}")
         output.append(f"  Tags: {', '.join(note['tags']) if note['tags'] else 'None'}")
@@ -127,6 +153,10 @@ async def get_deck_notes(
             )
             output.append(f"    {field_name}: {value}")
         output.append("")
+
+    has_more = end_idx < total_notes
+    if has_more:
+        output.append(f"... {total_notes - end_idx} more notes available (use offset={end_idx})")
 
     return "\n".join(output)
 
