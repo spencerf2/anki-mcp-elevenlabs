@@ -1,7 +1,9 @@
 import asyncio
-import pytest
-import os
 import base64
+import os
+
+import pytest
+
 from anki_mcp_elevenlabs.tts.elevenlabs_tts import generate_elevenlabs_audio
 from anki_mcp_elevenlabs.tts.unified_tts import generate_tts_audio
 
@@ -31,7 +33,9 @@ async def test_elevenlabs_api_key_missing():
 async def test_elevenlabs_audio_generation():
     """Test ElevenLabs audio generation with real API call."""
     result = await generate_elevenlabs_audio(
-        text="Hello world", voice_id=None, model="eleven_monolingual_v1"  # Use default
+        text="Hello world",
+        voice_id=None,
+        model="eleven_monolingual_v1",  # Use default
     )
 
     assert result["success"] is True
@@ -86,6 +90,7 @@ async def test_unified_tts_google():
 
 
 if __name__ == "__main__":
+
     async def run_tests():
         print("Running TTS tests...")
 

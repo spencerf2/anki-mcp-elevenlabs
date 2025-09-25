@@ -1,4 +1,19 @@
-.PHONY: help test
+.PHONY: help test fmt install-hooks
+
+help:
+	@echo "Available targets:"
+	@echo "  fmt           - Format code with ruff"
+	@echo "  install-hooks - Install git pre-commit hooks"
+	@echo "  test          - Run all tests"
+	@echo "  test FILE=... - Run specific test file"
+	@echo "  help          - Show this help message"
+
+fmt:
+	poetry run ruff format .
+	poetry run ruff check --fix .
+
+install-hooks:
+	./scripts/install-pre-commit-hook.sh
 
 test:
 	@if [ -n "$(FILE)" ]; then \
@@ -9,8 +24,3 @@ test:
 		poetry run pytest anki_mcp_elevenlabs/tests/ -v; \
 	fi
 
-help:
-	@echo "Available targets:"
-	@echo "  test          - Run all tests"
-	@echo "  test FILE=... - Run specific test file"
-	@echo "  help          - Show this help message"
