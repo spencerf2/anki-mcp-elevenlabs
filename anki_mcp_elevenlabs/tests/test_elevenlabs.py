@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import pytest
 from pathlib import Path
 
 # Add the project root to Python path
@@ -10,6 +11,7 @@ sys.path.insert(0, str(project_root))
 from anki_mcp_elevenlabs.tts import generate_elevenlabs_audio, generate_tts_audio
 
 
+@pytest.mark.asyncio
 async def test_elevenlabs():
     """Test ElevenLabs audio generation."""
 
@@ -71,6 +73,7 @@ async def test_elevenlabs():
         return False
 
 
+@pytest.mark.asyncio
 async def test_tts_unified():
     """Test the unified TTS interface."""
 
