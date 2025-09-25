@@ -1,13 +1,13 @@
-from mcp.server.fastmcp import FastMCP
-import requests
 import random
 import re
 from typing import Annotated
+
+import requests
+from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from .tts import generate_tts_audio
 from .server_utils import safe_get_error
-
+from .tts import generate_tts_audio
 
 mcp_server = FastMCP("anki-mcp")
 
@@ -26,17 +26,14 @@ async def _anki_request(action: str, params: dict = None) -> dict:
         if response.status_code != 200:
             return {
                 "result": None,
-                "error": f"Failed to connect to Anki: {response.status_code}"
+                "error": f"Failed to connect to Anki: {response.status_code}",
             }
 
         result = response.json()
         return result
 
     except Exception as e:
-        return {
-            "result": None, 
-            "error": f"Request failed: {str(e)}"
-        }
+        return {"result": None, "error": f"Request failed: {str(e)}"}
 
 
 async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
@@ -45,7 +42,7 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
     find_result = await _anki_request("findNotes", {"query": f'deck:"{deck_name}"'})
     if find_result.get("error"):
         return find_result
-    
+
     note_ids = find_result["result"]
     if not note_ids:
         return {
@@ -54,20 +51,20 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
                 "count": 0,
                 "total_in_deck": 0,
             },
-            "error": None
+            "error": None,
         }
-    
+
     # Apply sampling if requested
     original_count = len(note_ids)
     if sample_size is not None:
         actual_sample_size = min(sample_size, len(note_ids))
         note_ids = random.sample(note_ids, actual_sample_size)
-    
+
     # Get detailed note info
     notes_result = await _anki_request("notesInfo", {"notes": note_ids})
     if notes_result.get("error"):
         return notes_result
-    
+
     notes = notes_result["result"]
     return {
         "result": {
@@ -75,7 +72,7 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
             "count": len(notes),
             "total_in_deck": original_count,
         },
-        "error": None
+        "error": None,
     }
 
 
@@ -83,7 +80,7 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
 async def list_decks() -> str:
     """List all available Anki decks."""
     result = await _anki_request("deckNames")
-    
+
     if result.get("error"):
         return f"Error: {result['error']}"
 
@@ -112,32 +109,39 @@ async def get_deck_notes(
     find_result = await _anki_request("findNotes", {"query": f'deck:"{deck_name}"'})
     if find_result.get("error"):
         return f"Error: {find_result['error']}"
-    
+
     all_note_ids = find_result["result"]
     if not all_note_ids:
         return f"No notes found in deck '{deck_name}'"
-    
+
     total_notes = len(all_note_ids)
-    
+
     start_idx = offset
     end_idx = min(offset + limit, total_notes)
-    
+
     if start_idx >= total_notes:
-        return f"Offset {offset} exceeds total notes ({total_notes}) in deck '{deck_name}'"
-    
+        return (
+            f"Offset {offset} exceeds total notes ({total_notes}) in deck '{deck_name}'"
+        )
+
     paginated_ids = all_note_ids[start_idx:end_idx]
-    
+
     if ids_only:
-        return f"Note IDs in deck '{deck_name}' (showing {len(paginated_ids)} of {total_notes}, offset {offset}):\n" + "\n".join(map(str, paginated_ids))
-    
+        return (
+            f"Note IDs in deck '{deck_name}' (showing {len(paginated_ids)} of {total_notes}, offset {offset}):\n"
+            + "\n".join(map(str, paginated_ids))
+        )
+
     notes_result = await _anki_request("notesInfo", {"notes": paginated_ids})
     if notes_result.get("error"):
         return f"Error retrieving note details: {notes_result['error']}"
-    
+
     notes = notes_result["result"]
-    
+
     # Format the notes for better readability
-    output = [f"Notes in deck '{deck_name}' (showing {len(notes)} of {total_notes}, offset {offset}):\n"]
+    output = [
+        f"Notes in deck '{deck_name}' (showing {len(notes)} of {total_notes}, offset {offset}):\n"
+    ]
 
     for i, note in enumerate(notes, start=offset + 1):
         output.append(f"Note {i} (ID: {note['noteId']}):")
@@ -156,7 +160,9 @@ async def get_deck_notes(
 
     has_more = end_idx < total_notes
     if has_more:
-        output.append(f"... {total_notes - end_idx} more notes available (use offset={end_idx})")
+        output.append(
+            f"... {total_notes - end_idx} more notes available (use offset={end_idx})"
+        )
 
     return "\n".join(output)
 
@@ -175,14 +181,14 @@ async def get_deck_sample(
 ) -> str:
     """Get a random sample of notes from a specific deck to understand typical note structure."""
     result = await _fetch_deck_notes(deck_name, sample_size=sample_size)
-    
+
     if result.get("error"):
         return f"Error: {result['error']}"
-    
+
     data = result["result"]
     notes = data["notes"]
     total_in_deck = data["total_in_deck"]
-    
+
     if not notes:
         return f"No notes found in deck '{deck_name}'"
 
@@ -218,13 +224,13 @@ async def get_deck_note_types(
     """Get the note types (models) and their field definitions used in a specific deck."""
     # Use helper with sampling to find model types
     result = await _fetch_deck_notes(deck_name, sample_size=50)
-    
+
     if result.get("error"):
         return f"Error: {result['error']}"
-    
+
     data = result["result"]
     notes = data["notes"]
-    
+
     if not notes:
         return f"No notes found in deck '{deck_name}'"
 
@@ -237,8 +243,10 @@ async def get_deck_note_types(
     output = [f"Note types used in deck '{deck_name}':\n"]
 
     for model_name in sorted(model_names):
-        fields_result = await _anki_request("modelFieldNames", {"modelName": model_name})
-        
+        fields_result = await _anki_request(
+            "modelFieldNames", {"modelName": model_name}
+        )
+
         if not fields_result.get("error"):
             fields = fields_result["result"]
             output.append(f"Model: {model_name}")
@@ -266,7 +274,10 @@ async def create_note(
         list, Field(description="Optional list of tags to add to the note")
     ] = None,
     validate_media: Annotated[
-        bool, Field(description="Check that all [sound:...] references exist before creating note")
+        bool,
+        Field(
+            description="Check that all [sound:...] references exist before creating note"
+        ),
     ] = False,
 ):
     """Create a new note in the specified deck with the given fields and tags."""
@@ -314,7 +325,10 @@ async def update_note(
         list, Field(description="Optional list of tags to replace existing tags")
     ] = None,
     validate_media: Annotated[
-        bool, Field(description="Check that all [sound:...] references exist before updating note")
+        bool,
+        Field(
+            description="Check that all [sound:...] references exist before updating note"
+        ),
     ] = False,
 ) -> dict:
     """Update specific fields of an existing note. Perfect for adding audio or other content to existing cards."""
@@ -613,55 +627,63 @@ async def create_notes_bulk(
         ),
     ],
     validate_media: Annotated[
-        bool, Field(description="Check that all [sound:...] references exist before creating notes")
+        bool,
+        Field(
+            description="Check that all [sound:...] references exist before creating notes"
+        ),
     ] = False,
     skip_invalid_media: Annotated[
-        bool, Field(description="Skip notes with missing media instead of failing entire operation")
+        bool,
+        Field(
+            description="Skip notes with missing media instead of failing entire operation"
+        ),
     ] = False,
 ) -> dict:
     """Create multiple notes in a single batch operation for efficiency. Handles duplicates gracefully by reporting which notes are duplicates while still creating non-duplicate notes."""
     if not notes_list:
         return {"error": "No notes provided", "success": False}
-    
+
     original_notes_count = len(notes_list)
 
     # Basic input validation
     for i, note_data in enumerate(notes_list):
         if not isinstance(note_data, dict):
-            return {"error": f"Note {i+1} is not a dictionary", "success": False}
+            return {"error": f"Note {i + 1} is not a dictionary", "success": False}
 
         if "model_name" not in note_data or "fields" not in note_data:
             return {
-                "error": f"Note {i+1} missing required 'model_name' or 'fields'",
+                "error": f"Note {i + 1} missing required 'model_name' or 'fields'",
                 "success": False,
             }
-    
+
     # Media validation if requested
     if validate_media:
         all_fields = [note["fields"] for note in notes_list]
         missing_media = await find_missing_media_references(all_fields)
-        
+
         if missing_media:  # Some notes have missing media
             if skip_invalid_media:
                 # Filter out notes with missing media
-                valid_notes = [note for i, note in enumerate(notes_list) 
-                              if i not in missing_media]
+                valid_notes = [
+                    note for i, note in enumerate(notes_list) if i not in missing_media
+                ]
                 notes_list = valid_notes  # Use filtered list for creation
                 skipped_count = original_notes_count - len(notes_list)
             else:
                 # Fail fast with detailed error
-                problem_details = {f"note_{i}": files for i, files in missing_media.items()}
+                problem_details = {
+                    f"note_{i}": files for i, files in missing_media.items()
+                }
                 return {
                     "error": f"Notes with missing media: {problem_details}",
                     "success": False,
                     "total_attempted": original_notes_count,
-                    "notes_with_missing_media": len(missing_media)
+                    "notes_with_missing_media": len(missing_media),
                 }
 
     # Prepare notes for Anki
     anki_notes = []
     for i, note_data in enumerate(notes_list):
-
         anki_note = {
             "deckName": deck_name,
             "modelName": note_data["model_name"],
@@ -749,9 +771,14 @@ async def create_notes_bulk(
     message_parts = [f"Created {len(successful_notes)} new notes"]
     if failed_notes:
         message_parts.append(f"{len(failed_notes)} notes failed")
-    if validate_media and skip_invalid_media and 'skipped_count' in locals() and skipped_count > 0:
+    if (
+        validate_media
+        and skip_invalid_media
+        and "skipped_count" in locals()
+        and skipped_count > 0
+    ):
         message_parts.append(f"{skipped_count} notes skipped due to missing media")
-    
+
     return_data = {
         "success": True,
         "total_attempted": original_notes_count,
@@ -761,11 +788,11 @@ async def create_notes_bulk(
         "failed_notes": failed_notes,
         "message": ". ".join(message_parts) + ".",
     }
-    
+
     # Add media validation info if applicable
-    if validate_media and skip_invalid_media and 'skipped_count' in locals():
+    if validate_media and skip_invalid_media and "skipped_count" in locals():
         return_data["skipped_count"] = skipped_count
-    
+
     return return_data
 
 
@@ -1078,7 +1105,10 @@ async def find_similar_notes(
 @mcp_server.tool()
 async def list_media_files(
     pattern: Annotated[
-        str, Field(description="Optional pattern like '*.mp3' or '*chinese*' to filter files")
+        str,
+        Field(
+            description="Optional pattern like '*.mp3' or '*chinese*' to filter files"
+        ),
     ] = None,
 ) -> dict:
     """List all media files in Anki's collection, optionally filtered by pattern."""
@@ -1086,7 +1116,7 @@ async def list_media_files(
         params = {}
         if pattern:
             params["pattern"] = pattern
-        
+
         response = requests.post(
             ANKI_CONNECT_URL,
             json={
@@ -1146,7 +1176,7 @@ async def media_file_exists(
             return {"error": result["error"], "success": False}
 
         exists = result["result"] is not False
-        
+
         return {
             "success": True,
             "exists": exists,
@@ -1154,7 +1184,10 @@ async def media_file_exists(
         }
 
     except Exception as e:
-        return {"error": f"Failed to check media file existence: {str(e)}", "success": False}
+        return {
+            "error": f"Failed to check media file existence: {str(e)}",
+            "success": False,
+        }
 
 
 @mcp_server.tool()
@@ -1188,7 +1221,7 @@ async def retrieve_media_file(
             return {"error": result["error"], "success": False}
 
         file_data = result["result"]
-        
+
         if file_data is False:
             return {
                 "success": True,
@@ -1202,12 +1235,14 @@ async def retrieve_media_file(
             "exists": True,
             "filename": filename,
         }
-        
+
         if return_base64:
             return_data["base64_data"] = file_data
         else:
-            return_data["message"] = f"Media file '{filename}' exists (content not returned)"
-        
+            return_data["message"] = (
+                f"Media file '{filename}' exists (content not returned)"
+            )
+
         return return_data
 
     except Exception as e:
@@ -1235,7 +1270,7 @@ async def delete_media_file(
         exists_result = await media_file_exists(filename)
         if not exists_result.get("success"):
             return exists_result
-        
+
         if not exists_result.get("exists"):
             return {
                 "success": True,
@@ -1304,58 +1339,63 @@ async def get_media_directory() -> dict:
         }
 
     except Exception as e:
-        return {"error": f"Failed to get media directory path: {str(e)}", "success": False}
+        return {
+            "error": f"Failed to get media directory path: {str(e)}",
+            "success": False,
+        }
 
 
-async def find_missing_media_references(note_fields: list[dict]) -> dict[int, list[str]]:
+async def find_missing_media_references(
+    note_fields: list[dict],
+) -> dict[int, list[str]]:
     """
     Find notes with missing media references. Unified function for single or bulk validation.
-    
+
     Args:
         note_fields: List of field dictionaries (single note = list with 1 item)
-    
+
     Returns:
         Dictionary mapping note indices to their missing media files.
         Empty dict {} if no issues found.
-        
+
         Examples:
         {} - No missing media
-        {0: ["missing1.mp3"]} - Note 0 has 1 missing file  
+        {0: ["missing1.mp3"]} - Note 0 has 1 missing file
         {0: ["file1.mp3"], 3: ["file2.mp3", "file3.mp3"]} - Multiple notes with issues
     """
     try:
         all_media_references = {}  # note_index -> [filenames]
         unique_filenames = set()
-        
+
         for note_index, note_field_dict in enumerate(note_fields):
             media_files = []
             for field_name, field_value in note_field_dict.items():
                 # Extract [sound:filename.ext] patterns using regex
-                sound_pattern = r'\[sound:(.*?)\]'
+                sound_pattern = r"\[sound:(.*?)\]"
                 matches = re.findall(sound_pattern, field_value)
                 media_files.extend(matches)
-            
+
             if media_files:
                 all_media_references[note_index] = media_files
                 unique_filenames.update(media_files)
-        
+
         if not unique_filenames:
             return {}
-        
+
         missing_files = set()
         for filename in unique_filenames:
             exists_result = await media_file_exists(filename)
             if exists_result.get("success") and not exists_result.get("exists"):
                 missing_files.add(filename)
-        
+
         notes_with_missing_media = {}
         for note_index, referenced_files in all_media_references.items():
             note_missing_files = [f for f in referenced_files if f in missing_files]
             if note_missing_files:
                 notes_with_missing_media[note_index] = note_missing_files
-        
+
         return notes_with_missing_media
-        
+
     except Exception as e:
         # In case of error, log and return empty dict to avoid breaking note creation
         print(f"Error in find_missing_media_references: {e}")
@@ -1364,28 +1404,29 @@ async def find_missing_media_references(note_fields: list[dict]) -> dict[int, li
 
 @mcp_server.tool()
 async def validate_deck_media(
-    deck_name: Annotated[
-        str, Field(description="Name of the Anki deck to validate")
-    ],
+    deck_name: Annotated[str, Field(description="Name of the Anki deck to validate")],
     delete_missing_refs: Annotated[
-        bool, Field(description="Automatically remove broken [sound:...] references from cards")
+        bool,
+        Field(
+            description="Automatically remove broken [sound:...] references from cards"
+        ),
     ] = False,
 ) -> dict:
     """
     Validate all media references in an existing deck.
     Useful for cleanup operations and post-import validation.
-    
+
     Returns detailed report of broken references and optionally fixes them.
     """
     try:
         result = await _fetch_deck_notes(deck_name)
-        
+
         if result.get("error"):
             return {"error": result["error"], "success": False}
-        
+
         data = result["result"]
         notes = data["notes"]
-        
+
         if not notes:
             return {
                 "success": True,
@@ -1393,29 +1434,31 @@ async def validate_deck_media(
                 "notes_with_missing_media": 0,
                 "missing_files": [],
                 "broken_notes": {},
-                "message": f"No notes found in deck '{deck_name}'"
+                "message": f"No notes found in deck '{deck_name}'",
             }
-        
+
         all_fields = []
         note_id_to_index = {}
-        
+
         for i, note in enumerate(notes):
-            fields_dict = {field_name: field_data["value"] 
-                          for field_name, field_data in note["fields"].items()}
+            fields_dict = {
+                field_name: field_data["value"]
+                for field_name, field_data in note["fields"].items()
+            }
             all_fields.append(fields_dict)
             note_id_to_index[note["noteId"]] = i
-        
+
         missing_media = await find_missing_media_references(all_fields)
-        
+
         broken_notes = {}
         all_missing_files = set()
-        
+
         for note_index, missing_files in missing_media.items():
             note = notes[note_index]
             note_id = note["noteId"]
             broken_notes[note_id] = missing_files
             all_missing_files.update(missing_files)
-        
+
         deleted_refs_count = 0
         if delete_missing_refs and broken_notes:
             for note_id, missing_files in broken_notes.items():
@@ -1423,23 +1466,23 @@ async def validate_deck_media(
                 note = next(n for n in notes if n["noteId"] == note_id)
                 updated_fields = {}
                 fields_changed = False
-                
+
                 for field_name, field_data in note["fields"].items():
                     field_value = field_data["value"]
                     original_value = field_value
-                    
+
                     # Remove all [sound:missing_file.ext] references
                     for missing_file in missing_files:
-                        pattern = rf'\[sound:{re.escape(missing_file)}\]'
-                        field_value = re.sub(pattern, '', field_value)
-                    
+                        pattern = rf"\[sound:{re.escape(missing_file)}\]"
+                        field_value = re.sub(pattern, "", field_value)
+
                     # Clean up whitespace
-                    field_value = re.sub(r'\s+', ' ', field_value).strip()
-                    
+                    field_value = re.sub(r"\s+", " ", field_value).strip()
+
                     if field_value != original_value:
                         updated_fields[field_name] = field_value
                         fields_changed = True
-                
+
                 if fields_changed:
                     update_result = await update_note(
                         note_id=note_id,
@@ -1448,7 +1491,7 @@ async def validate_deck_media(
                     )
                     if update_result.get("success"):
                         deleted_refs_count += 1
-        
+
         response_data = {
             "success": True,
             "total_notes": len(notes),
@@ -1457,79 +1500,87 @@ async def validate_deck_media(
             "missing_files": sorted(list(all_missing_files)),
             "broken_notes": broken_notes,
         }
-        
+
         # Build descriptive message
         if not broken_notes:
-            response_data["message"] = f"All {len(notes)} notes in deck '{deck_name}' have valid media references"
+            response_data["message"] = (
+                f"All {len(notes)} notes in deck '{deck_name}' have valid media references"
+            )
         else:
             message_parts = [
-                f"Found {len(broken_notes)} notes with missing media out of {len(notes)} total notes ({len(broken_notes)/len(notes)*100:.1f}%) in deck '{deck_name}'",
-                f"{len(all_missing_files)} unique missing files"
+                f"Found {len(broken_notes)} notes with missing media out of {len(notes)} total notes ({len(broken_notes) / len(notes) * 100:.1f}%) in deck '{deck_name}'",
+                f"{len(all_missing_files)} unique missing files",
             ]
             if delete_missing_refs:
                 if deleted_refs_count > 0:
-                    message_parts.append(f"Removed broken references from {deleted_refs_count} notes")
+                    message_parts.append(
+                        f"Removed broken references from {deleted_refs_count} notes"
+                    )
                 else:
-                    message_parts.append("No broken references could be automatically removed")
-            
+                    message_parts.append(
+                        "No broken references could be automatically removed"
+                    )
+
             response_data["message"] = ". ".join(message_parts)
-            
+
             if delete_missing_refs:
                 response_data["deleted_refs_count"] = deleted_refs_count
-        
+
         return response_data
-        
+
     except Exception as e:
         return {"error": f"Failed to validate deck media: {str(e)}", "success": False}
 
 
 @mcp_server.tool()
 async def get_notes_by_ids(
-    note_ids: Annotated[
-        list[int], Field(description="List of note IDs to retrieve")
-    ],
+    note_ids: Annotated[list[int], Field(description="List of note IDs to retrieve")],
     fields_only: Annotated[
         bool, Field(description="Return only field data, not full note metadata")
-    ] = False
+    ] = False,
 ) -> dict:
     """
     Get specific notes by their IDs using AnkiConnect's batch API.
-    
-    Returns note data for the requested IDs. Keep batches reasonable to avoid 
-    token limits. 
-    
-    Context: Even the simplest cards with minimal text use 150+ tokens (full) 
+
+    Returns note data for the requested IDs. Keep batches reasonable to avoid
+    token limits.
+
+    Context: Even the simplest cards with minimal text use 150+ tokens (full)
     or 60+ tokens (fields_only). Cards with longer content use significantly more.
     """
     try:
         if not note_ids:
             return {"error": "No note IDs provided", "success": False}
-            
+
         # Use AnkiConnect's batch notesInfo API
         result = await _anki_request("notesInfo", {"notes": note_ids})
-        
+
         if result.get("error"):
             return {"error": result["error"], "success": False}
-        
+
         notes = result["result"]
-        
+
         if fields_only:
             simplified_notes = []
             for note in notes:
-                simplified_notes.append({
-                    "noteId": note["noteId"],
-                    "fields": {field_name: field_data["value"] 
-                              for field_name, field_data in note["fields"].items()}
-                })
+                simplified_notes.append(
+                    {
+                        "noteId": note["noteId"],
+                        "fields": {
+                            field_name: field_data["value"]
+                            for field_name, field_data in note["fields"].items()
+                        },
+                    }
+                )
             notes = simplified_notes
-        
+
         return {
             "success": True,
             "notes": notes,
             "notes_count": len(notes),
-            "requested_count": len(note_ids)
+            "requested_count": len(note_ids),
         }
-        
+
     except Exception as e:
         return {"error": f"Failed to get notes by IDs: {str(e)}", "success": False}
 
@@ -1553,78 +1604,79 @@ async def extract_content_for_generation(
     ] = 50,
     offset: Annotated[
         int, Field(description="Starting index for pagination (0-based)")
-    ] = 0
+    ] = 0,
 ) -> dict:
     """
     Extract clean content from cards for generation purposes (audio, images, etc).
-    
+
     Returns text content with optional stripping of HTML and audio references.
     Maps content back to note IDs for later updates. Supports pagination via offset.
-    
-    Context: HTML stripping removes images (<img> tags). Audio stripping removes [sound:...] 
+
+    Context: HTML stripping removes images (<img> tags). Audio stripping removes [sound:...]
     references. TODO: Consider moving image handling to a separate strip_image_refs parameter.
     """
     try:
         find_result = await _anki_request("findNotes", {"query": f'deck:"{deck_name}"'})
-        
+
         if find_result.get("error"):
             return {"error": find_result["error"], "success": False}
-        
+
         all_note_ids = find_result["result"]
-        
+
         start_idx = offset
         end_idx = offset + max_results
         paginated_note_ids = all_note_ids[start_idx:end_idx]
-        
+
         if not paginated_note_ids:
             if not all_note_ids:
                 message = f"No notes found in deck '{deck_name}'"
             else:
                 message = f"No notes at offset {offset} in deck '{deck_name}' (total: {len(all_note_ids)})"
-            
+
             return {
                 "success": True,
                 "extracted_content": [],
                 "field_name": extract_from,
                 "message": message,
-                "total_notes": len(all_note_ids)
+                "total_notes": len(all_note_ids),
             }
-        
+
         notes_result = await get_notes_by_ids(paginated_note_ids, fields_only=True)
-        
+
         if not notes_result.get("success"):
             return {"error": notes_result.get("error"), "success": False}
-        
+
         notes = notes_result["notes"]
         extracted_content = []
-        
+
         for note in notes:
             # Check if the requested field exists
             if extract_from not in note["fields"]:
                 continue
-                
+
             original_content = note["fields"][extract_from]
             clean_content = original_content
-            
+
             if strip_audio_refs:
                 import re
-                clean_content = re.sub(r'\[sound:[^\]]+\]', '', clean_content)
-            
+
+                clean_content = re.sub(r"\[sound:[^\]]+\]", "", clean_content)
+
             if strip_formatting:
                 import re
-                clean_content = re.sub(r'<br\s*/?>', ' ', clean_content)
-                clean_content = re.sub(r'<[^>]+>', '', clean_content)
-            
+
+                clean_content = re.sub(r"<br\s*/?>", " ", clean_content)
+                clean_content = re.sub(r"<[^>]+>", "", clean_content)
+
             # Clean up extra whitespace
-            clean_content = ' '.join(clean_content.split())
-            
+            clean_content = " ".join(clean_content.split())
+
             # Only include if there's actual content
             if clean_content.strip():
-                extracted_content.append({
-                    "note_id": note["noteId"],
-                    "clean_content": clean_content
-                })
-        
+                extracted_content.append(
+                    {"note_id": note["noteId"], "clean_content": clean_content}
+                )
+
         return {
             "success": True,
             "field_name": extract_from,
@@ -1633,8 +1685,8 @@ async def extract_content_for_generation(
             "processed_count": len(notes),
             "total_notes": len(all_note_ids),
             "offset": offset,
-            "has_more": end_idx < len(all_note_ids)
+            "has_more": end_idx < len(all_note_ids),
         }
-        
+
     except Exception as e:
         return {"error": f"Failed to extract content: {str(e)}", "success": False}
