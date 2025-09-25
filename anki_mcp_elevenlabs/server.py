@@ -599,9 +599,9 @@ async def generate_audio(
     language: Annotated[
         str,
         Field(
-            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English) - used by Google TTS"
+            description="Language code. For ElevenLabs: simple codes ('en', 'es', 'fr'). For Google TTS: full locale codes ('en-US', 'es-ES', 'cmn-cn')."
         ),
-    ] = "cmn-cn",
+    ] = "en",
     voice: Annotated[
         str,
         Field(
@@ -857,9 +857,9 @@ async def generate_and_save_audio(
     language: Annotated[
         str,
         Field(
-            description="Language code (e.g., 'cmn-cn' for Chinese, 'en-US' for English) - used by Google TTS"
+            description="Language code. For ElevenLabs: simple codes ('en', 'es', 'fr'). For Google TTS: full locale codes ('en-US', 'es-ES', 'cmn-cn')."
         ),
-    ] = "cmn-cn",
+    ] = "en",
     voice: Annotated[
         str,
         Field(
