@@ -21,14 +21,11 @@ async def generate_elevenlabs_audio(
     if voice_id is None:
         voice_id = os.getenv(
             "ELEVENLABS_VOICE_ID", "aEO01A4wXwd1O8GPgGlF"
-        )  # Default Arabella voice
+        )  # Default Arabella (English). For Spanish, use: hEKEQC93QpOYMa6WuwWp
 
     # Smart model selection based on language
     if model is None:
-        if language == "en":
-            model = "eleven_monolingual_v2"
-        else:
-            model = "eleven_multilingual_v2"
+        model = "eleven_multilingual_v2"
 
     try:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"

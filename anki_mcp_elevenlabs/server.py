@@ -605,7 +605,7 @@ async def generate_audio(
     voice: Annotated[
         str,
         Field(
-            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF'). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
+            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF' for English, 'hEKEQC93QpOYMa6WuwWp' for Spanish). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
         ),
     ] = None,
 ) -> dict:
@@ -863,7 +863,7 @@ async def generate_and_save_audio(
     voice: Annotated[
         str,
         Field(
-            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF'). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
+            description="Voice identifier. For ElevenLabs: voice_id (e.g., 'aEO01A4wXwd1O8GPgGlF' for English, 'hEKEQC93QpOYMa6WuwWp' for Spanish). For Google: voice name (e.g., 'cmn-CN-Chirp3-HD-Achernar')"
         ),
     ] = None,
 ) -> dict:
