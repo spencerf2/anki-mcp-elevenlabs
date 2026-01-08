@@ -1,5 +1,7 @@
+import base64
 import random
 import re
+from pathlib import Path
 from typing import Annotated
 
 import requests
@@ -74,6 +76,31 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
         },
         "error": None,
     }
+
+
+def _prepare_media_data(data: str) -> str:
+    """
+    Convert media data to base64 format if needed.
+
+    Accepts either:
+    - File path -> reads file and converts to base64
+    - Base64 string -> passes through unchanged
+
+    Returns:
+        Base64 encoded string
+    """
+
+    try:
+        path = Path(data)
+        if path.exists() and path.is_file():
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+    except (OSError, ValueError):
+        # File name too long, invalid path, etc. - assume base64
+        pass
+
+    # Not a valid file path - assume it's already base64
+    return data
 
 
 @mcp_server.tool()
@@ -803,13 +830,12 @@ async def save_media_file(
         Field(description="Name of the file to save (e.g., 'audio.mp3', 'image.jpg')"),
     ],
     base64_data: Annotated[str, Field(description="Base64 encoded file data")],
-    media_type: Annotated[
-        str, Field(description="Type of media file (audio, image, etc.)")
-    ] = "audio",
 ) -> dict:
     """Save base64 encoded media data as a file in Anki's media collection for use in cards."""
 
     try:
+        base64_data = _prepare_media_data(base64_data)
+
         # Use AnkiConnect's storeMediaFile action to save the base64 data
         response = requests.post(
             ANKI_CONNECT_URL,
@@ -836,7 +862,6 @@ async def save_media_file(
         return {
             "success": True,
             "filename": saved_filename,
-            "media_type": media_type,
             "message": f"Media file saved as '{saved_filename}' in Anki's media collection",
         }
 
@@ -876,7 +901,7 @@ async def generate_and_save_audio(
         return audio_result
 
     # Then save it to Anki's media collection
-    save_result = await save_media_file(filename, audio_result["audio_base64"], "audio")
+    save_result = await save_media_file(filename, audio_result["audio_base64"])
 
     if not save_result.get("success"):
         return save_result
