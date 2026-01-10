@@ -829,9 +829,9 @@ async def save_media_file(
         str,
         Field(description="Name of the file to save (e.g., 'audio.mp3', 'image.jpg')"),
     ],
-    base64_data: Annotated[str, Field(description="Base64 encoded file data")],
+    base64_data: Annotated[str, Field(description="Base64 encoded file data OR a local file path (auto-detected)")],
 ) -> dict:
-    """Save base64 encoded media data as a file in Anki's media collection for use in cards."""
+    """Save media data as a file in Anki's media collection. Accepts base64 data or a file path."""
 
     try:
         base64_data = _prepare_media_data(base64_data)
