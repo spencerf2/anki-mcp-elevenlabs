@@ -78,6 +78,9 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
     }
 
 
+MAX_MEDIA_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 def _prepare_media_data(data: str) -> str:
     """
     Convert media data to base64 format if needed.
@@ -88,15 +91,21 @@ def _prepare_media_data(data: str) -> str:
 
     Returns:
         Base64 encoded string
-    """
 
+    Raises:
+        ValueError: If file exceeds MAX_MEDIA_FILE_SIZE
+    """
     try:
         path = Path(data)
-        if path.exists() and path.is_file():
-            with open(path, "rb") as f:
-                return base64.b64encode(f.read()).decode("utf-8")
-    except (OSError, ValueError):
-        # File name too long, invalid path, etc. - assume base64
+        file_size = path.stat().st_size
+        if file_size > MAX_MEDIA_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {file_size} bytes (max {MAX_MEDIA_FILE_SIZE})"
+            )
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except (OSError, FileNotFoundError, IsADirectoryError, PermissionError):
+        # Not a readable file - assume base64
         pass
 
     # Not a valid file path - assume it's already base64
