@@ -1,5 +1,7 @@
+import base64
 import random
 import re
+from pathlib import Path
 from typing import Annotated
 
 import requests
@@ -74,6 +76,40 @@ async def _fetch_deck_notes(deck_name: str, sample_size: int = None) -> dict:
         },
         "error": None,
     }
+
+
+MAX_MEDIA_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def _prepare_media_data(data: str) -> str:
+    """
+    Convert media data to base64 format if needed.
+
+    Accepts either:
+    - File path -> reads file and converts to base64
+    - Base64 string -> passes through unchanged
+
+    Returns:
+        Base64 encoded string
+
+    Raises:
+        ValueError: If file exceeds MAX_MEDIA_FILE_SIZE
+    """
+    try:
+        path = Path(data)
+        with open(path, "rb") as f:
+            raw = f.read(MAX_MEDIA_FILE_SIZE + 1)
+        if len(raw) > MAX_MEDIA_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(raw)}+ bytes (max {MAX_MEDIA_FILE_SIZE})"
+            )
+        return base64.b64encode(raw).decode("utf-8")
+    except (OSError, FileNotFoundError, IsADirectoryError, PermissionError):
+        # Not a readable file - assume base64
+        pass
+
+    # Not a valid file path - assume it's already base64
+    return data
 
 
 @mcp_server.tool()
@@ -802,21 +838,25 @@ async def save_media_file(
         str,
         Field(description="Name of the file to save (e.g., 'audio.mp3', 'image.jpg')"),
     ],
-    base64_data: Annotated[str, Field(description="Base64 encoded file data")],
-    media_type: Annotated[
-        str, Field(description="Type of media file (audio, image, etc.)")
-    ] = "audio",
+    media_data: Annotated[
+        str,
+        Field(
+            description="Base64 encoded file data OR a local file path (auto-detected)"
+        ),
+    ],
 ) -> dict:
-    """Save base64 encoded media data as a file in Anki's media collection for use in cards."""
+    """Save media data as a file in Anki's media collection. Accepts base64 data or a file path."""
 
     try:
+        media_data = _prepare_media_data(media_data)
+
         # Use AnkiConnect's storeMediaFile action to save the base64 data
         response = requests.post(
             ANKI_CONNECT_URL,
             json={
                 "action": "storeMediaFile",
                 "version": 6,
-                "params": {"filename": filename, "data": base64_data},
+                "params": {"filename": filename, "data": media_data},
             },
         )
 
@@ -830,14 +870,11 @@ async def save_media_file(
         if result.get("error"):
             return {"error": result["error"], "success": False}
 
-        # AnkiConnect returns the filename that was actually used (may be modified to avoid conflicts)
-        saved_filename = result["result"]
-
+        # AnkiConnect's storeMediaFile returns null on success
         return {
             "success": True,
-            "filename": saved_filename,
-            "media_type": media_type,
-            "message": f"Media file saved as '{saved_filename}' in Anki's media collection",
+            "filename": filename,
+            "message": f"Media file saved as '{filename}' in Anki's media collection",
         }
 
     except Exception as e:
@@ -876,7 +913,7 @@ async def generate_and_save_audio(
         return audio_result
 
     # Then save it to Anki's media collection
-    save_result = await save_media_file(filename, audio_result["audio_base64"], "audio")
+    save_result = await save_media_file(filename, audio_result["audio_base64"])
 
     if not save_result.get("success"):
         return save_result
