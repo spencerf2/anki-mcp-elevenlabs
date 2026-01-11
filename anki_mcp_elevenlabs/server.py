@@ -112,6 +112,53 @@ def _prepare_media_data(data: str) -> str:
     return data
 
 
+def _search_notes_for_terms(
+    notes: list[dict],
+    search_terms: list[str],
+    case_sensitive: bool,
+    max_results_per_term: int,
+) -> dict[str, list[dict]]:
+    """Search notes for multiple terms, return results grouped by term."""
+    results_by_term = {}
+
+    for search_term in search_terms:
+        search_compare = search_term.lower() if not case_sensitive else search_term
+        matching_notes = []
+
+        for note in notes:
+            matching_fields = []
+            for field_name, field_value in note["fields"].items():
+                if not field_value:
+                    continue
+
+                field_compare = (
+                    field_value.lower() if not case_sensitive else field_value
+                )
+
+                if search_compare in field_compare:
+                    matching_fields.append(
+                        {"field_name": field_name, "field_value": field_value}
+                    )
+
+            if matching_fields:
+                matching_notes.append(
+                    {
+                        "note_id": note["note_id"],
+                        "deck_name": note["deck_name"],
+                        "model_name": note["model_name"],
+                        "matching_fields": matching_fields,
+                        "fields": note["fields"],
+                    }
+                )
+
+                if len(matching_notes) >= max_results_per_term:
+                    break
+
+        results_by_term[search_term] = matching_notes
+
+    return results_by_term
+
+
 @mcp_server.tool()
 async def list_decks() -> str:
     """List all available Anki decks."""
@@ -1015,25 +1062,36 @@ async def update_notes_bulk(
 @mcp_server.tool()
 async def find_similar_notes(
     deck_name: Annotated[str, Field(description="Name of the Anki deck to search in")],
-    search_text: Annotated[
-        str, Field(description="Text to search for as a substring in any field")
+    search_terms: Annotated[
+        list[str],
+        Field(description="List of terms to search for as substrings in any field"),
     ],
     case_sensitive: Annotated[
         bool, Field(description="Whether the search should be case sensitive")
     ] = False,
-    max_results: Annotated[
+    max_results_per_term: Annotated[
         int,
-        Field(description="Maximum number of matching notes to return", ge=1, le=100),
+        Field(
+            description="Maximum number of matching notes to return per search term",
+            ge=1,
+            le=100,
+        ),
     ] = 20,
 ) -> dict:
-    """Find notes that contain the search text as a substring in any field. Simple and reliable text matching."""
+    """Find notes containing any of the search terms. Returns results grouped by term, with deck info."""
+
+    if not search_terms:
+        return {
+            "error": "search_terms must contain at least one term",
+            "success": False,
+        }
 
     try:
-        # Get all notes from the deck first
+        # Get all cards from the deck using findCards
         response = requests.post(
             ANKI_CONNECT_URL,
             json={
-                "action": "findNotes",
+                "action": "findCards",
                 "version": 6,
                 "params": {"query": f'deck:"{deck_name}"'},
             },
@@ -1049,14 +1107,14 @@ async def find_similar_notes(
         if result.get("error"):
             return {"error": result["error"], "success": False}
 
-        note_ids = result["result"]
-        if not note_ids:
-            return {"error": f"No notes found in deck '{deck_name}'", "success": False}
+        card_ids = result["result"]
+        if not card_ids:
+            return {"error": f"No cards found in deck '{deck_name}'", "success": False}
 
-        # Get detailed info for all notes
+        # Get detailed info for all cards (includes deck name)
         response = requests.post(
             ANKI_CONNECT_URL,
-            json={"action": "notesInfo", "version": 6, "params": {"notes": note_ids}},
+            json={"action": "cardsInfo", "version": 6, "params": {"cards": card_ids}},
         )
 
         if response.status_code != 200:
@@ -1069,70 +1127,36 @@ async def find_similar_notes(
         if result.get("error"):
             return {"error": result["error"], "success": False}
 
-        notes = result["result"]
+        cards = result["result"]
 
-        # Prepare search text for comparison
-        search_lower = search_text.lower() if not case_sensitive else search_text
+        # Deduplicate
+        notes_by_id = {}
+        for card in cards:
+            note_id = card["note"]
+            if note_id not in notes_by_id:
+                notes_by_id[note_id] = {
+                    "note_id": note_id,
+                    "deck_name": card["deckName"],
+                    "model_name": card["modelName"],
+                    "fields": {
+                        name: data["value"] for name, data in card["fields"].items()
+                    },
+                }
 
-        # Find matching notes
-        matching_notes = []
-        for note in notes:
-            # Check each field for the search text
-            matches_found = []
-            for field_name, field_data in note["fields"].items():
-                field_value = field_data["value"].strip()
-                if not field_value:
-                    continue
+        notes = list(notes_by_id.values())
 
-                # Compare based on case sensitivity setting
-                field_compare = (
-                    field_value.lower() if not case_sensitive else field_value
-                )
-
-                if search_lower in field_compare:
-                    matches_found.append(
-                        {"field_name": field_name, "field_value": field_value}
-                    )
-
-            # If any field matched, add the note to results
-            if matches_found:
-                matching_notes.append({"note": note, "matching_fields": matches_found})
-
-        # Limit results
-        matching_notes = matching_notes[:max_results]
-
-        if not matching_notes:
-            return {
-                "success": True,
-                "found_count": 0,
-                "message": f"No notes found containing '{search_text}' in deck '{deck_name}'",
-                "notes": [],
-            }
-
-        # Format results
-        formatted_notes = []
-        for item in matching_notes:
-            note = item["note"]
-            formatted_note = {
-                "note_id": note["noteId"],
-                "model_name": note["modelName"],
-                "tags": note["tags"],
-                "matching_fields": item["matching_fields"],
-                "fields": {},
-            }
-
-            for field_name, field_data in note["fields"].items():
-                formatted_note["fields"][field_name] = field_data["value"]
-
-            formatted_notes.append(formatted_note)
+        results_by_term = _search_notes_for_terms(
+            notes, search_terms, case_sensitive, max_results_per_term
+        )
+        terms_with_matches = sum(1 for matches in results_by_term.values() if matches)
 
         return {
             "success": True,
-            "search_text": search_text,
-            "found_count": len(matching_notes),
-            "case_sensitive": case_sensitive,
             "deck_name": deck_name,
-            "notes": formatted_notes,
+            "case_sensitive": case_sensitive,
+            "total_terms_searched": len(search_terms),
+            "terms_with_matches": terms_with_matches,
+            "results": results_by_term,
         }
 
     except Exception as e:
