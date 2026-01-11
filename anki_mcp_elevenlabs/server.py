@@ -121,8 +121,11 @@ def _search_notes_for_terms(
     """Search notes for multiple terms, return results grouped by term."""
     results_by_term = {}
 
-    for search_term in search_terms:
-        search_compare = search_term.lower() if not case_sensitive else search_term
+    # Filter empty/whitespace-only terms to avoid "" matching everything
+    normalized_terms = [t for t in (s.strip() for s in search_terms) if t]
+
+    for search_term in normalized_terms:
+        search_compare = search_term if case_sensitive else search_term.lower()
         matching_notes = []
 
         for note in notes:
@@ -144,7 +147,7 @@ def _search_notes_for_terms(
                 matching_notes.append(
                     {
                         "note_id": note["note_id"],
-                        "deck_name": note["deck_name"],
+                        "deck_names": note["deck_names"],
                         "model_name": note["model_name"],
                         "matching_fields": matching_fields,
                         "fields": note["fields"],
@@ -1095,6 +1098,7 @@ async def find_similar_notes(
                 "version": 6,
                 "params": {"query": f'deck:"{deck_name}"'},
             },
+            timeout=60,
         )
 
         if response.status_code != 200:
@@ -1115,6 +1119,7 @@ async def find_similar_notes(
         response = requests.post(
             ANKI_CONNECT_URL,
             json={"action": "cardsInfo", "version": 6, "params": {"cards": card_ids}},
+            timeout=60,
         )
 
         if response.status_code != 200:
@@ -1129,19 +1134,25 @@ async def find_similar_notes(
 
         cards = result["result"]
 
-        # Deduplicate
+        # Deduplicate and collect all deck names per note
         notes_by_id = {}
         for card in cards:
             note_id = card["note"]
             if note_id not in notes_by_id:
                 notes_by_id[note_id] = {
                     "note_id": note_id,
-                    "deck_name": card["deckName"],
+                    "deck_names": {card["deckName"]},
                     "model_name": card["modelName"],
                     "fields": {
                         name: data["value"] for name, data in card["fields"].items()
                     },
                 }
+            else:
+                notes_by_id[note_id]["deck_names"].add(card["deckName"])
+
+        # Convert deck_names sets to sorted lists
+        for note in notes_by_id.values():
+            note["deck_names"] = sorted(note["deck_names"])
 
         notes = list(notes_by_id.values())
 

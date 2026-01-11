@@ -292,25 +292,27 @@ Updates multiple notes in a single batch operation for maximum efficiency.
 
 ### `find_similar_notes`
 
-Find notes containing any of the search terms. Returns results grouped by term, with deck info.
+Find notes containing any of the search terms. Returns results grouped by term, with subdeck info.
 
 **Parameters**:
 
-- `deck_name` (str): Name of the Anki deck to search in
+- `deck_name` (str): Name of the Anki deck to search in (used as a filter)
 - `search_terms` (list[str]): List of terms to search for as substrings in any field
 - `case_sensitive` (bool, optional): Whether the search should be case sensitive (default: false)
 - `max_results_per_term` (int, optional): Maximum number of matching notes to return per search term (default: 20)
 
-**Returns**: Results grouped by search term, each match includes `deck_name` showing which subdeck the note belongs to
+**Returns**: Results grouped by search term. The top-level `deck_name` is the input filter; each match includes `deck_names` (list) showing all decks the note's cards belong to.
 
 **Features**:
 
 - Bulk search: check multiple terms in a single call
-- Returns subdeck info for each match
+- Returns all deck names per match (useful for filtered decks and nested hierarchies)
 - Fast substring matching across all note fields
 - Case-sensitive or case-insensitive search options
 - Shows exactly which fields matched the search criteria
 - Uses only local AnkiConnect (no external APIs)
+
+**Note**: Tags are not returned (uses cardsInfo API for subdeck support).
 
 ## Technical Details
 
