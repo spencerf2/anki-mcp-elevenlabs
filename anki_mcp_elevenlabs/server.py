@@ -97,13 +97,13 @@ def _prepare_media_data(data: str) -> str:
     """
     try:
         path = Path(data)
-        file_size = path.stat().st_size
-        if file_size > MAX_MEDIA_FILE_SIZE:
-            raise ValueError(
-                f"File too large: {file_size} bytes (max {MAX_MEDIA_FILE_SIZE})"
-            )
         with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
+            raw = f.read(MAX_MEDIA_FILE_SIZE + 1)
+        if len(raw) > MAX_MEDIA_FILE_SIZE:
+            raise ValueError(
+                f"File too large: {len(raw)}+ bytes (max {MAX_MEDIA_FILE_SIZE})"
+            )
+        return base64.b64encode(raw).decode("utf-8")
     except (OSError, FileNotFoundError, IsADirectoryError, PermissionError):
         # Not a readable file - assume base64
         pass
@@ -838,7 +838,7 @@ async def save_media_file(
         str,
         Field(description="Name of the file to save (e.g., 'audio.mp3', 'image.jpg')"),
     ],
-    base64_data: Annotated[
+    media_data: Annotated[
         str,
         Field(
             description="Base64 encoded file data OR a local file path (auto-detected)"
@@ -848,7 +848,7 @@ async def save_media_file(
     """Save media data as a file in Anki's media collection. Accepts base64 data or a file path."""
 
     try:
-        base64_data = _prepare_media_data(base64_data)
+        media_data = _prepare_media_data(media_data)
 
         # Use AnkiConnect's storeMediaFile action to save the base64 data
         response = requests.post(
@@ -856,7 +856,7 @@ async def save_media_file(
             json={
                 "action": "storeMediaFile",
                 "version": 6,
-                "params": {"filename": filename, "data": base64_data},
+                "params": {"filename": filename, "data": media_data},
             },
         )
 
@@ -870,13 +870,11 @@ async def save_media_file(
         if result.get("error"):
             return {"error": result["error"], "success": False}
 
-        # AnkiConnect returns the filename that was actually used (may be modified to avoid conflicts)
-        saved_filename = result["result"]
-
+        # AnkiConnect's storeMediaFile returns null on success
         return {
             "success": True,
-            "filename": saved_filename,
-            "message": f"Media file saved as '{saved_filename}' in Anki's media collection",
+            "filename": filename,
+            "message": f"Media file saved as '{filename}' in Anki's media collection",
         }
 
     except Exception as e:

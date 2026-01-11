@@ -232,17 +232,16 @@ Generates high-quality audio files from text using Google Cloud Text-to-Speech A
 
 ### `save_media_file`
 
-Saves base64 encoded media data as a file in Anki's media collection for use in cards.
+Saves media data as a file in Anki's media collection for use in cards.
 
 **Parameters**:
 
 - `filename` (str): Name of the file to save (e.g., 'audio.mp3', 'image.jpg')
-- `base64_data` (str): Base64 encoded file data
-- `media_type` (str, optional): Type of media file (default: "audio")
+- `media_data` (str): Base64 encoded file data OR a local file path (auto-detected)
 
 **Returns**: JSON object with saved filename and success status
 
-**Use Case**: Save generated audio or other media files for use in Anki cards
+**Use Case**: Save generated audio, images, or other media files for use in Anki cards. Accepts either base64 data or a file path for convenience.
 
 ### `generate_and_save_audio`
 
