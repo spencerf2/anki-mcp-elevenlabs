@@ -5,7 +5,7 @@ import requests
 
 
 async def generate_elevenlabs_audio(
-    text: str, voice_id: str = None, model: str = None, language: str = "en"
+    text: str, voice_id: str = None, model: str = None, language: str = None
 ) -> dict:
     """Generate audio from text using ElevenLabs HTTP API directly and return base64 encoded audio data."""
 
@@ -23,9 +23,10 @@ async def generate_elevenlabs_audio(
             "ELEVENLABS_VOICE_ID", "aEO01A4wXwd1O8GPgGlF"
         )  # Default Arabella (English). For Spanish, use: hEKEQC93QpOYMa6WuwWp
 
-    # Smart model selection based on language
+    # Turbo v2.5 honors language_code (Multilingual v2 silently ignores it),
+    # so we default to it to enforce the language set below.
     if model is None:
-        model = "eleven_multilingual_v2"
+        model = "eleven_turbo_v2_5"
 
     try:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -41,6 +42,8 @@ async def generate_elevenlabs_audio(
             "model_id": model,
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.5},
         }
+        if language:
+            data["language_code"] = language
 
         response = requests.post(url, json=data, headers=headers)
 
