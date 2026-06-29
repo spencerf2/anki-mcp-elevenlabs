@@ -23,10 +23,10 @@ async def generate_elevenlabs_audio(
             "ELEVENLABS_VOICE_ID", "aEO01A4wXwd1O8GPgGlF"
         )  # Default Arabella (English). For Spanish, use: hEKEQC93QpOYMa6WuwWp
 
-    # Turbo v2.5 honors language_code (Multilingual v2 silently ignores it),
+    # Flash v2.5 honors language_code (Multilingual v2 silently ignores it),
     # so we default to it to enforce the language set below.
     if model is None:
-        model = "eleven_turbo_v2_5"
+        model = "eleven_flash_v2_5"
 
     try:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
