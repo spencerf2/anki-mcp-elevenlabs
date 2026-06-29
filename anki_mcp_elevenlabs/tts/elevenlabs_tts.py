@@ -5,7 +5,7 @@ import requests
 
 
 async def generate_elevenlabs_audio(
-    text: str, voice_id: str = None, model: str = None, language: str = "en"
+    text: str, voice_id: str = None, model: str = None, language: str = None
 ) -> dict:
     """Generate audio from text using ElevenLabs HTTP API directly and return base64 encoded audio data."""
 
